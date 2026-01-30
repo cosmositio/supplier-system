@@ -664,10 +664,6 @@
                 </div>
                 
                 <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
-                    <button class="btn btn-secondary btn-sm" onclick="toggleSelectAll()" id="selectAllBtn">
-                        <input type="checkbox" id="selectAllCheckbox" style="margin-right: 5px; cursor: pointer;" onchange="toggleSelectAll()">
-                        Tümünü Seç
-                    </button>
                     <button class="btn btn-danger btn-sm" onclick="deleteSelected()" id="deleteSelectedBtn" style="display: none;">
                         🗑 Seçilenleri Sil (<span id="selectedCount">0</span>)
                     </button>
@@ -677,7 +673,7 @@
                     <table id="coaTable">
                         <thead>
                             <tr>
-                                <th style="width: 40px;"><input type="checkbox" id="headerCheckbox" onchange="toggleSelectAll()" style="cursor: pointer;"></th>
+                                <th style="width: 40px;">Seç</th>
                                 <th>Dosya</th>
                                 <th>Tedarikçi</th>
                                 <th>Hammadde Kodu</th>
@@ -2141,7 +2137,6 @@
             const count = selectedItems.size;
             const deleteBtn = document.getElementById('deleteSelectedBtn');
             const countSpan = document.getElementById('selectedCount');
-            const headerCheckbox = document.getElementById('headerCheckbox');
             
             countSpan.textContent = count;
             
@@ -2150,11 +2145,6 @@
             } else {
                 deleteBtn.style.display = 'none';
             }
-            
-            // Header checkbox durumu
-            const filtered = getFilteredData();
-            const allSelected = filtered.length > 0 && filtered.every(c => selectedItems.has(c.id));
-            headerCheckbox.checked = allSelected;
         }
         
         async function deleteSelected() {
