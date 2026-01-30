@@ -106,6 +106,33 @@
                 grid-template-columns: 1fr;
             }
             
+            /* Mobile Layout Order */
+            .container {
+                display: flex;
+                flex-direction: column;
+            }
+            
+            #statsSection {
+                order: 3; /* İstatistikler en alta */
+                margin-top: 30px;
+                margin-bottom: 20px;
+            }
+            
+            .main-grid {
+                order: 2; /* Form ve tablo ortada */
+                display: flex;
+                flex-direction: column;
+            }
+            
+            .main-grid > .card:first-child {
+                order: 1; /* Form önce */
+                margin-bottom: 20px;
+            }
+            
+            .main-grid > .card:last-child {
+                order: 2; /* Tablo sonra */
+            }
+            
             .header {
                 padding: 15px 20px;
             }
@@ -125,11 +152,15 @@
             }
             
             .stat-card {
-                padding: 15px;
+                padding: 18px;
             }
             
             .stat-card .number {
-                font-size: 1.5em;
+                font-size: 1.8em;
+            }
+            
+            .stat-card .label {
+                font-size: 1em;
             }
             
             .filters {
@@ -140,24 +171,62 @@
             .filters select {
                 width: 100%;
                 min-width: auto;
+                padding: 14px;
+                font-size: 16px;
             }
             
             .card {
-                padding: 20px 15px;
+                padding: 25px 20px;
+            }
+            
+            .card h2 {
+                font-size: 1.3em;
+                margin-bottom: 25px;
+            }
+            
+            .form-group {
+                margin-bottom: 20px;
+            }
+            
+            .form-group label {
+                font-size: 1.05em;
+                margin-bottom: 8px;
             }
             
             .form-group input,
-            .form-group select {
-                padding: 10px;
+            .form-group select,
+            .form-group textarea {
+                padding: 14px;
                 font-size: 16px; /* Prevent zoom on iOS */
+                border-width: 2px;
             }
             
             .upload-area {
-                padding: 20px;
+                padding: 35px 20px;
+                min-height: 200px;
             }
             
             .upload-icon {
-                font-size: 2em;
+                font-size: 3em;
+            }
+            
+            .upload-text {
+                font-size: 1.05em;
+            }
+            
+            .btn {
+                padding: 16px 24px;
+                font-size: 1.05em;
+            }
+            
+            /* Tablo mobil optimize */
+            .table-container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            
+            table {
+                min-width: 800px; /* Kaydırma için */
             }
         }
         
@@ -165,51 +234,78 @@
             .header {
                 flex-direction: column;
                 align-items: flex-start;
-                padding: 12px 15px;
+                padding: 15px;
+                gap: 10px;
             }
             
             .header h1 {
-                font-size: 1.1em;
+                font-size: 1.2em;
             }
             
             .back-btn {
-                padding: 8px 15px;
-                font-size: 0.9em;
-            }
-            
-            .stats-bar {
-                grid-template-columns: 1fr;
-            }
-            
-            .stat-card .number {
-                font-size: 1.8em;
-            }
-            
-            .card h2 {
-                font-size: 1.1em;
-            }
-            
-            .btn {
                 padding: 10px 18px;
                 font-size: 0.95em;
             }
             
+            .stats-bar {
+                grid-template-columns: 1fr;
+                gap: 12px;
+            }
+            
+            .stat-card {
+                padding: 20px;
+            }
+            
+            .stat-card .number {
+                font-size: 2em;
+            }
+            
+            .stat-card .label {
+                font-size: 1.05em;
+            }
+            
+            .card {
+                padding: 20px 15px;
+            }
+            
+            .card h2 {
+                font-size: 1.2em;
+            }
+            
+            .form-group input,
+            .form-group select {
+                padding: 16px;
+                font-size: 16px;
+            }
+            
+            .upload-area {
+                padding: 30px 15px;
+            }
+            
+            .btn {
+                padding: 15px 20px;
+                font-size: 1.05em;
+                font-weight: 700;
+            }
+            
             table {
-                font-size: 0.85em;
+                font-size: 0.9em;
             }
             
             th, td {
-                padding: 8px 5px;
+                padding: 10px 8px;
             }
             
             .action-buttons {
-                flex-wrap: wrap;
-                gap: 5px;
+                flex-direction: column;
+                gap: 8px;
             }
             
             .btn-sm {
-                padding: 6px 10px;
-                font-size: 0.8em;
+                padding: 10px 14px;
+                font-size: 0.9em;
+                width: 100%;
+                justify-content: center;
             }
         }
         
@@ -653,8 +749,8 @@
     </div>
     
     <div class="container">
-        <!-- Stats -->
-        <div class="stats-bar">
+        <!-- Stats - Mobilde en alta gidecek -->
+        <div class="stats-bar" id="statsSection">
             <div class="stat-card">
                 <div class="number" id="statTotal">0</div>
                 <div class="label">Toplam Sertifika</div>
