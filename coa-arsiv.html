@@ -736,27 +736,53 @@
             try {
                 showToast('📤 Kaydediliyor...', 'info');
                 
-                let fileDataForSheets = '';
+                let fileUrl = '';
+                let driveFileId = '';
                 
-                // Dosya varsa Sheets için sıkıştır
+                // Dosya varsa Drive'a yükle
                 if (record.fileData && record.fileName) {
-                    console.log('Dosya sıkıştırılıyor...', record.fileName);
-                    showToast('📦 Dosya sıkıştırılıyor...', 'info');
+                    console.log('Dosya Drive\'a yükleniyor...', record.fileName);
+                    showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // 10KB hedef - URL'de gönderilebilir
-                        const compressedData = await compressForSheets(record.fileData, 10);
-                        console.log('Sheets için boyut:', Math.round(compressedData.length / 1024), 'KB');
+                        // Orta kalite - 100KB (okunaklı)
+                        const compressedData = await compressForSheets(record.fileData, 100);
+                        console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        fileDataForSheets = compressedData;
-                        record.fileData = compressedData; // LocalStorage için de aynısı
-                        showToast('✅ Dosya hazırlandı', 'success');
-                    } catch (compressErr) {
-                        console.error('Sıkıştırma hatası:', compressErr);
+                        // JSON POST ile Drive'a gönder
+                        const uploadPayload = {
+                            action: 'uploadFile',
+                            fileData: compressedData,
+                            fileName: record.fileName,
+                            mimeType: record.fileType || 'image/jpeg'
+                        };
+                        
+                        const uploadResponse = await fetch(googleScriptUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(uploadPayload)
+                        });
+                        
+                        const uploadResult = await uploadResponse.json();
+                        console.log('Drive upload sonucu:', uploadResult);
+                        
+                        if (uploadResult && uploadResult.success) {
+                            fileUrl = uploadResult.viewUrl || uploadResult.directUrl;
+                            driveFileId = uploadResult.fileId;
+                            showToast('✅ Dosya Drive\'a yüklendi!', 'success');
+                        } else {
+                            console.error('Drive upload hatası:', uploadResult?.error);
+                            throw new Error(uploadResult?.error || 'Dosya Drive\'a yüklenemedi');
+                        }
+                    } catch (uploadErr) {
+                        console.error('Drive upload hatası:', uploadErr);
+                        throw new Error('Drive yükleme hatası: ' + uploadErr.message);
                     }
                 }
                 
-                // Kayıt verisini hazırla - fileData DAHİL
+                // Kayıt verisini hazırla
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
@@ -766,38 +792,20 @@
                     notes: record.notes || '',
                     fileName: record.fileName || '',
                     fileType: record.fileType || '',
-                    fileUrl: '',
-                    driveFileId: '',
-                    fileData: fileDataForSheets, // Sheets'e gidecek
+                    fileUrl: fileUrl,
+                    driveFileId: driveFileId,
+                    fileData: '', // Sheets'e base64 koymuyoruz
                     createdAt: record.createdAt || new Date().toISOString()
                 };
                 
-                // URL oluştur ve kontrol et
+                // JSONP ile metadata gönder
                 const params = new URLSearchParams();
                 params.append('action', 'addCOA');
                 params.append('data', JSON.stringify(saveData));
                 
                 const url = googleScriptUrl + '?' + params.toString();
-                console.log('URL uzunluğu:', url.length);
+                console.log('Metadata kaydediliyor...');
                 
-                // URL çok uzunsa fileData'yı çıkar ve uyar
-                if (url.length > 15000) {
-                    console.warn('URL çok uzun (' + url.length + '), fileData hariç gönderiliyor');
-                    saveData.fileData = '';
-                    const params2 = new URLSearchParams();
-                    params2.append('action', 'addCOA');
-                    params2.append('data', JSON.stringify(saveData));
-                    const url2 = googleScriptUrl + '?' + params2.toString();
-                    
-                    const result = await jsonp(url2);
-                    if (!result || !result.success) {
-                        throw new Error(result?.error || 'Kayıt oluşturulamadı');
-                    }
-                    showToast('⚠️ Dosya çok büyük - kayıt eklendi ama dosya kaydedilemedi', 'warning');
-                    return true;
-                }
-                
-                console.log('Kayıt + dosya gönderiliyor...');
                 const result = await jsonp(url);
                 console.log('Kayıt sonucu:', result);
                 
@@ -805,7 +813,7 @@
                     throw new Error(result?.error || 'Kayıt oluşturulamadı');
                 }
                 
-                showToast('✅ Kayıt ve dosya Sheets\'e kaydedildi!', 'success');
+                showToast('✅ Kayıt ve dosya başarıyla Drive\'a eklendi!', 'success');
                 return true;
                 
             } catch (error) {
@@ -1084,7 +1092,7 @@
         }
         
         // Sheets için özel sıkıştırma (max 15KB hedef - URL limiti için)
-        async function compressForSheets(dataUrl, maxSizeKB = 10) {
+        async function compressForSheets(dataUrl, maxSizeKB = 100) {
             return new Promise((resolve, reject) => {
                 // PDF ise thumbnail olarak dönüştür
                 if (dataUrl.includes('application/pdf')) {
