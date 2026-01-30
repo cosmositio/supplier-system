@@ -745,8 +745,8 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // Orta kalite - 100KB (okunaklı)
-                        const compressedData = await compressForSheets(record.fileData, 100);
+                        // Yüksek kalite - 250KB (net okunabilir)
+                        const compressedData = await compressForSheets(record.fileData, 250);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
                         // Form-encoded POST (CORS preflight yok!)
@@ -1091,7 +1091,7 @@
         }
         
         // Sheets için özel sıkıştırma (max 15KB hedef - URL limiti için)
-        async function compressForSheets(dataUrl, maxSizeKB = 100) {
+        async function compressForSheets(dataUrl, maxSizeKB = 250) {
             return new Promise((resolve, reject) => {
                 // PDF ise thumbnail olarak dönüştür
                 if (dataUrl.includes('application/pdf')) {
@@ -1114,7 +1114,7 @@
                     const maxSize = maxSizeKB * 1024;
                     
                     // Hedef boyuta göre başlangıç boyutu ayarla
-                    let maxDim = maxSizeKB >= 100 ? 1400 : (maxSizeKB >= 50 ? 1000 : 600);
+                    let maxDim = maxSizeKB >= 200 ? 2000 : (maxSizeKB >= 100 ? 1600 : (maxSizeKB >= 50 ? 1000 : 600));
                     
                     if (width > maxDim || height > maxDim) {
                         if (width > height) {
@@ -1133,7 +1133,7 @@
                     ctx.drawImage(img, 0, 0, width, height);
                     
                     // Kalite başlangıcı
-                    let quality = maxSizeKB >= 100 ? 0.85 : (maxSizeKB >= 50 ? 0.7 : 0.6);
+                    let quality = maxSizeKB >= 200 ? 0.90 : (maxSizeKB >= 100 ? 0.85 : (maxSizeKB >= 50 ? 0.7 : 0.6));
                     let result = canvas.toDataURL('image/jpeg', quality);
                     
                     // Boyut büyükse kaliteyi düşür
