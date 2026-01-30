@@ -551,7 +551,7 @@
         // ==================== Global Variables ====================
         let coaData = [];
         let suppliers = [];
-        let googleScriptUrl = '';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbw98xgbJ20abLDkP58ZGfQw59clcjnMLbHZzYuxCTCL6IK4ecLK_mhcjjH1BI-aZWkrMQ/exec';
         let selectedFile = null;
         let selectedFileData = null;
         
@@ -682,15 +682,28 @@
         async function loadFromGoogleSheets() {
             try {
                 console.log('Google Sheets\'ten veri yükleniyor...');
+                showToast('🔄 Veriler yükleniyor...', 'info');
+                
                 const data = await jsonp(googleScriptUrl + '?action=getAllCOA');
-                if (data.success) {
-                    coaData = data.data || [];
+                
+                if (data && data.success) {
+                    // fileData olmadan kayıtları al (Drive URL'leri var)
+                    coaData = (data.data || []).map(record => {
+                        // fileData'yı kesinlikle dahil etme
+                        const { fileData, ...cleanRecord } = record;
+                        return cleanRecord;
+                    });
+                    
                     console.log('Yüklenen kayıt sayısı:', coaData.length);
+                    
                     // Yerel yedek olarak da kaydet
                     saveToLocalStorage();
+                    
+                    showToast('✅ ' + coaData.length + ' kayıt yüklendi', 'success');
                 } else {
-                    console.error('Veri yükleme hatası:', data.error);
+                    console.error('Veri yükleme hatası:', data?.error);
                     loadFromLocalStorage();
+                    showToast('⚠️ Sheets hatası, yerel veriler kullanılıyor', 'warning');
                 }
             } catch (error) {
                 console.error('Yükleme hatası:', error);
@@ -701,31 +714,56 @@
         }
         
         async function saveToGoogleSheets(record) {
-            // Sheets'e kaydet (dosya yükleme şimdilik devre dışı - CORS sorunu)
             try {
-                showToast('📤 Google Sheets\'e kaydediliyor...', 'info');
+                showToast('📤 Kaydediliyor...', 'info');
                 
+                // Dosya varsa önce Drive'a yükle
+                if (record.fileData) {
+                    console.log('Dosya yükleniyor...');
+                    
+                    const uploadResult = await uploadFileToDrive(
+                        record.fileData,
+                        record.fileName,
+                        record.fileType || 'image/jpeg',
+                        record
+                    );
+                    
+                    if (uploadResult && uploadResult.success) {
+                        // Başarılı - Drive bilgilerini kayda ekle
+                        record.fileUrl = uploadResult.viewUrl;
+                        record.driveFileId = uploadResult.fileId;
+                        delete record.fileData; // Yerel veriyi temizle
+                        
+                        showToast('✅ Kayıt ve dosya başarıyla kaydedildi!', 'success');
+                        return true;
+                    } else {
+                        // Yükleme başarısız - sadece metadata kaydet
+                        console.warn('Dosya yüklenemedi, sadece metadata kaydediliyor:', uploadResult?.error);
+                        showToast('⚠️ Dosya yüklenemedi ama kayıt oluşturuldu', 'warning');
+                    }
+                }
+                
+                // Dosya yoksa veya yükleme başarısızsa sadece metadata kaydet
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
                     materialCode: record.materialCode,
                     deliveryDate: record.deliveryDate,
-                    lotNumber: record.lotNumber,
-                    notes: record.notes,
-                    fileName: record.fileName,
-                    fileType: record.fileType || 'image/jpeg',
-                    fileData: '', 
-                    fileUrl: '', // Dosya yükleme CORS nedeniyle devre dışı
-                    driveFileId: '',
+                    lotNumber: record.lotNumber || '',
+                    notes: record.notes || '',
+                    fileName: record.fileName || '',
+                    fileType: record.fileType || '',
+                    fileUrl: record.fileUrl || '',
+                    driveFileId: record.driveFileId || '',
                     createdAt: record.createdAt
                 };
                 
                 const params = new URLSearchParams();
                 params.append('action', 'addCOA');
-                params.append('data', JSON.stringify(saveData));
+                params.append('data', encodeURIComponent(JSON.stringify(saveData)));
                 
                 const url = googleScriptUrl + '?' + params.toString();
-                console.log('Sheets isteği gönderiliyor, URL boyutu:', url.length);
+                console.log('Sheets isteği gönderiliyor...');
                 
                 const result = await jsonp(url);
                 console.log('Sheets yanıtı:', result);
@@ -738,8 +776,8 @@
                 }
                 
             } catch (error) {
-                console.error('Sheets kayıt hatası:', error);
-                showToast('❌ Sheets hatası: ' + error.message, 'error');
+                console.error('Kaydetme hatası:', error);
+                showToast('❌ Hata: ' + error.message, 'error');
                 return false;
             }
         }
@@ -854,48 +892,119 @@
             });
         }
         
-        // Dosyayı parçalara böl ve Drive'a yükle
+        // Dosyayı parçalara böl ve Drive'a yükle (Geliştirilmiş versiyon)
         async function uploadFileToDrive(base64Data, fileName, mimeType, recordData) {
-            const CHUNK_SIZE = 30000; // 30KB parçalar (daha güvenli)
-            const uploadId = 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            const CHUNK_SIZE = 45000; // 45KB parçalar (Google Cache limiti: 100KB)
+            const MAX_RETRIES = 3;
+            const RETRY_DELAY = 1000; // 1 saniye
             
-            // Base64 verisini parçalara böl
-            const chunks = [];
-            for (let i = 0; i < base64Data.length; i += CHUNK_SIZE) {
-                chunks.push(base64Data.slice(i, i + CHUNK_SIZE));
-            }
+            // Benzersiz upload ID
+            const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             
-            console.log('Dosya ' + chunks.length + ' parcaya bolundu (toplam ' + Math.round(base64Data.length/1024) + 'KB)');
-            showToast('📦 ' + chunks.length + ' parça yüklenecek...', 'info');
+            // Base64 prefix'i temizle
+            const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
             
-            // Her parçayı sırayla gönder
-            for (let i = 0; i < chunks.length; i++) {
-                const progress = Math.round((i + 1) / chunks.length * 100);
+            // Boyut kontrolü - küçük dosyalar için direkt upload
+            const fileSizeKB = Math.round(base64Content.length * 0.75 / 1024);
+            
+            if (fileSizeKB < 500) {
+                // Küçük dosya - direkt upload
+                console.log('Küçük dosya, direkt upload yapılıyor (' + fileSizeKB + 'KB)');
+                showToast('📤 Dosya yükleniyor (' + fileSizeKB + 'KB)...', 'info');
+                
+                const params = new URLSearchParams();
+                params.append('action', 'uploadFile');
+                params.append('fileData', base64Data);
+                params.append('fileName', fileName);
+                params.append('mimeType', mimeType || 'application/octet-stream');
+                if (recordData) {
+                    params.append('recordData', JSON.stringify(recordData));
+                }
                 
                 try {
-                    const params = new URLSearchParams();
-                    params.append('action', 'uploadChunk');
-                    params.append('uploadId', uploadId);
-                    params.append('chunkIndex', i.toString());
-                    params.append('totalChunks', chunks.length.toString());
-                    params.append('chunk', encodeURIComponent(chunks[i]));
-                    
                     const result = await jsonp(googleScriptUrl + '?' + params.toString());
-                    
-                    if (!result.success) {
-                        throw new Error('Parça yükleme hatası: ' + (result.error || 'Bilinmeyen'));
-                    }
-                    
-                    console.log(`Parça ${i + 1}/${chunks.length} yüklendi (${progress}%)`);
-                    
-                    // Her 5 parçada bir ilerleme göster
-                    if (i % 5 === 0 || i === chunks.length - 1) {
-                        showToast(`⏳ Yükleniyor: %${progress}`, 'info');
-                    }
-                    
+                    return result;
                 } catch (error) {
-                    console.error(`Parça ${i} yüklenirken hata:`, error);
-                    throw error;
+                    console.error('Direkt upload hatası:', error);
+                    // Direkt upload başarısız olursa chunk upload'a geç
+                    showToast('⚠️ Direkt upload başarısız, parçalı yüklemeye geçiliyor...', 'warning');
+                }
+            }
+            
+            // Büyük dosya - chunk upload
+            const chunks = [];
+            for (let i = 0; i < base64Content.length; i += CHUNK_SIZE) {
+                chunks.push(base64Content.slice(i, i + CHUNK_SIZE));
+            }
+            
+            console.log('Dosya ' + chunks.length + ' parçaya bölündü (' + fileSizeKB + 'KB)');
+            showToast('📦 ' + chunks.length + ' parça yüklenecek...', 'info');
+            
+            // Upload başlat (init)
+            try {
+                const initParams = new URLSearchParams();
+                initParams.append('action', 'initUpload');
+                initParams.append('fileName', fileName);
+                initParams.append('mimeType', mimeType || 'application/octet-stream');
+                initParams.append('totalSize', base64Content.length.toString());
+                initParams.append('totalChunks', chunks.length.toString());
+                
+                const initResult = await jsonp(googleScriptUrl + '?' + initParams.toString());
+                if (!initResult.success) {
+                    throw new Error('Upload başlatılamadı: ' + (initResult.error || 'Bilinmeyen hata'));
+                }
+                console.log('Upload başlatıldı:', uploadId);
+            } catch (error) {
+                console.error('Upload init hatası:', error);
+                throw error;
+            }
+            
+            // Her parçayı sırayla gönder (retry mekanizmasıyla)
+            for (let i = 0; i < chunks.length; i++) {
+                const progress = Math.round((i + 1) / chunks.length * 100);
+                let lastError = null;
+                
+                for (let retry = 0; retry < MAX_RETRIES; retry++) {
+                    try {
+                        const params = new URLSearchParams();
+                        params.append('action', 'uploadChunk');
+                        params.append('uploadId', uploadId);
+                        params.append('chunkIndex', i.toString());
+                        params.append('totalChunks', chunks.length.toString());
+                        params.append('chunk', chunks[i]); // Encode etmeye gerek yok
+                        
+                        const result = await jsonp(googleScriptUrl + '?' + params.toString());
+                        
+                        if (!result.success) {
+                            if (result.expired) {
+                                throw new Error('Upload oturumu süresi doldu. Lütfen tekrar deneyin.');
+                            }
+                            throw new Error(result.error || 'Parça yüklenemedi');
+                        }
+                        
+                        console.log(`Parça ${i + 1}/${chunks.length} yüklendi (%${progress})`);
+                        lastError = null;
+                        break; // Başarılı, döngüden çık
+                        
+                    } catch (error) {
+                        lastError = error;
+                        console.warn(`Parça ${i} yükleme hatası (deneme ${retry + 1}/${MAX_RETRIES}):`, error.message);
+                        
+                        if (retry < MAX_RETRIES - 1) {
+                            await new Promise(r => setTimeout(r, RETRY_DELAY * (retry + 1)));
+                        }
+                    }
+                }
+                
+                if (lastError) {
+                    console.error(`Parça ${i} yüklenemedi:`, lastError);
+                    showToast('❌ Yükleme hatası: Parça ' + (i + 1), 'error');
+                    throw lastError;
+                }
+                
+                // İlerleme göster
+                if (i % 3 === 0 || i === chunks.length - 1) {
+                    showToast(`⏳ Yükleniyor: %${progress}`, 'info');
                 }
             }
             
@@ -903,26 +1012,37 @@
             console.log('Parçalar birleştiriliyor ve Drive\'a kaydediliyor...');
             showToast('🔄 Drive\'a kaydediliyor...', 'info');
             
-            const metaRecord = {
-                id: recordData.id,
-                supplier: recordData.supplier,
-                materialCode: recordData.materialCode,
-                deliveryDate: recordData.deliveryDate,
-                lotNumber: recordData.lotNumber,
-                notes: recordData.notes,
-                fileName: recordData.fileName,
-                fileType: recordData.fileType,
-                createdAt: recordData.createdAt
-            };
-            
             const finalParams = new URLSearchParams();
             finalParams.append('action', 'finalizeUpload');
             finalParams.append('uploadId', uploadId);
             finalParams.append('fileName', fileName);
-            finalParams.append('mimeType', mimeType);
-            finalParams.append('recordData', JSON.stringify(metaRecord));
+            finalParams.append('mimeType', mimeType || 'application/octet-stream');
+            
+            if (recordData) {
+                // Sadece gerekli alanları gönder
+                const cleanRecord = {
+                    id: recordData.id,
+                    supplier: recordData.supplier,
+                    materialCode: recordData.materialCode,
+                    deliveryDate: recordData.deliveryDate,
+                    lotNumber: recordData.lotNumber || '',
+                    notes: recordData.notes || '',
+                    fileName: fileName,
+                    fileType: mimeType,
+                    createdAt: recordData.createdAt || new Date().toISOString()
+                };
+                finalParams.append('recordData', JSON.stringify(cleanRecord));
+            }
             
             const finalResult = await jsonp(googleScriptUrl + '?' + finalParams.toString());
+            
+            if (!finalResult.success) {
+                if (finalResult.missingChunks) {
+                    console.error('Eksik parçalar:', finalResult.missingChunks);
+                    throw new Error('Bazı parçalar eksik: ' + finalResult.missingChunks.join(', '));
+                }
+                throw new Error('Finalize hatası: ' + (finalResult.error || 'Bilinmeyen'));
+            }
             
             return finalResult;
         }
@@ -935,7 +1055,10 @@
             if (pending.length === 0) return;
             
             console.log('Bekleyen kayıt sayısı:', pending.length);
-            showToast('🔄 Bekleyen kayıtlar senkronize ediliyor...', 'info');
+            showToast('🔄 ' + pending.length + ' bekleyen kayıt senkronize ediliyor...', 'info');
+            
+            let successCount = 0;
+            let failCount = 0;
             
             for (const record of pending) {
                 try {
@@ -944,34 +1067,48 @@
                         const result = await uploadFileToDrive(
                             record.fileData,
                             record.fileName,
-                            record.fileType,
+                            record.fileType || 'image/jpeg',
                             record
                         );
-                        if (result.success) {
+                        
+                        if (result && result.success) {
                             record.fileUrl = result.viewUrl;
                             record.driveFileId = result.fileId;
                             delete record.fileData;
                             delete record.pending;
+                            successCount++;
+                        } else {
+                            failCount++;
+                            console.error('Senkronizasyon hatası:', record.id, result?.error);
                         }
                     } else {
                         // Sadece meta veri olan kayıtları Sheets'e ekle
                         const params = new URLSearchParams();
                         params.append('action', 'addCOA');
-                        params.append('data', JSON.stringify(record));
+                        params.append('data', encodeURIComponent(JSON.stringify(record)));
                         
                         const result = await jsonp(googleScriptUrl + '?' + params.toString());
-                        if (result.success) {
+                        if (result && result.success) {
                             delete record.pending;
+                            successCount++;
+                        } else {
+                            failCount++;
                         }
                     }
                     console.log('Senkronize edildi:', record.id);
                 } catch (e) {
-                    console.error('Senkronizasyon hatası:', e);
+                    failCount++;
+                    console.error('Senkronizasyon hatası:', record.id, e);
                 }
             }
             
             saveToLocalStorage();
-            showToast('✅ Senkronizasyon tamamlandı', 'success');
+            
+            if (failCount === 0) {
+                showToast('✅ ' + successCount + ' kayıt senkronize edildi', 'success');
+            } else {
+                showToast('⚠️ ' + successCount + ' başarılı, ' + failCount + ' başarısız', 'warning');
+            }
         }
         
         async function deleteFromGoogleSheets(id) {

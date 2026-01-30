@@ -1,17 +1,16 @@
 // ==========================================
 // COA ARŞİV - Google Apps Script Backend
 // Bu kodu Google Apps Script'e yapıştırın
+// Version: 2.0 - Geliştirilmiş Dosya Yükleme
 // ==========================================
 
 // Sheet adı
 const SHEET_NAME = 'COA_Arsiv';
 const ALTERNATIVE_NAMES = ['COA Arşiv', 'COA_Arsiv', 'COA Arsiv', 'Sayfa1', 'Sheet1'];
 
-// Drive klasör ID - boş bırakın otomatik oluşturulsun
-let DRIVE_FOLDER_ID = '';
-
-// Geçici veri deposu (chunk'lar için)
-const CHUNK_CACHE = {};
+// Ayarlar
+const MAX_CHUNK_SIZE = 50000; // 50KB per chunk (Cache limiti: 100KB)
+const CACHE_DURATION = 21600; // 6 saat
 
 // ==================== Ana Fonksiyonlar ====================
 
@@ -23,7 +22,7 @@ function doGet(e) {
   try {
     switch(action) {
       case 'test':
-        result = { success: true, message: 'Bağlantı başarılı!', time: new Date().toISOString() };
+        result = testConnection();
         break;
       case 'getAllCOA':
         result = getAllCOA();
@@ -31,12 +30,28 @@ function doGet(e) {
       case 'getCOA':
         result = getCOA(e.parameter.id);
         break;
+      case 'searchCOA':
+        result = searchCOA(e.parameter.query, e.parameter.field);
+        break;
       case 'addCOA':
-        const data = e.parameter.data ? JSON.parse(e.parameter.data) : null;
+        const data = e.parameter.data ? JSON.parse(decodeURIComponent(e.parameter.data)) : null;
         result = data ? addCOA(data) : { success: false, error: 'Veri eksik' };
+        break;
+      case 'updateCOA':
+        const updateData = e.parameter.data ? JSON.parse(decodeURIComponent(e.parameter.data)) : null;
+        result = updateData ? updateCOA(e.parameter.id, updateData) : { success: false, error: 'Veri eksik' };
         break;
       case 'deleteCOA':
         result = deleteCOA(e.parameter.id);
+        break;
+      case 'getStats':
+        result = getStats();
+        break;
+      case 'uploadFile':
+        result = uploadFileDirectly(e.parameter);
+        break;
+      case 'initUpload':
+        result = initChunkUpload(e.parameter);
         break;
       case 'uploadChunk':
         result = uploadChunk(e.parameter);
@@ -44,57 +59,64 @@ function doGet(e) {
       case 'finalizeUpload':
         result = finalizeUpload(e.parameter);
         break;
+      case 'cancelUpload':
+        result = cancelUpload(e.parameter.uploadId);
+        break;
+      case 'getUploadStatus':
+        result = getUploadStatus(e.parameter.uploadId);
+        break;
       default:
         result = { success: false, error: 'Geçersiz action: ' + action };
     }
   } catch(error) {
-    result = { success: false, error: error.toString() };
+    result = { 
+      success: false, 
+      error: error.toString(),
+      stack: error.stack,
+      action: action
+    };
+    logError('doGet', error, e.parameter);
   }
   
-  if (callback) {
-    return ContentService
-      .createTextOutput(callback + '(' + JSON.stringify(result) + ')')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
-  }
-  
-  return ContentService
-    .createTextOutput(JSON.stringify(result))
-    .setMimeType(ContentService.MimeType.JSON);
+  return createResponse(result, callback);
 }
 
 function doPost(e) {
   let result;
+  let action = '';
+  
   try {
-    const action = e.parameter.action;
+    action = e.parameter.action || '';
     let postData = {};
     
     if (e.postData) {
-      try {
+      const contentType = e.postData.type || '';
+      
+      if (contentType.includes('application/json')) {
         postData = JSON.parse(e.postData.contents);
-      } catch(err) {
-        // Form data olabilir
-        const formData = e.postData.contents;
-        const params = formData.split('&');
-        for (const param of params) {
-          const idx = param.indexOf('=');
-          if (idx > 0) {
-            const key = param.substring(0, idx);
-            const value = decodeURIComponent(param.substring(idx + 1));
-            if (key === 'data') {
-              postData = JSON.parse(value);
-            } else if (key === 'chunk') {
-              postData.chunk = value;
-            } else {
-              postData[key] = value;
-            }
-          }
-        }
+      } else {
+        // Form data parse
+        postData = parseFormData(e.postData.contents);
       }
+    }
+    
+    // Parameter'lardan da action alınabilir
+    if (!action && postData.action) {
+      action = postData.action;
     }
     
     switch(action) {
       case 'addCOA':
         result = addCOA(postData);
+        break;
+      case 'updateCOA':
+        result = updateCOA(postData.id, postData);
+        break;
+      case 'uploadFile':
+        result = uploadFileDirectly(postData);
+        break;
+      case 'initUpload':
+        result = initChunkUpload(postData);
         break;
       case 'uploadChunk':
         result = uploadChunk(postData);
@@ -102,16 +124,95 @@ function doPost(e) {
       case 'finalizeUpload':
         result = finalizeUpload(postData);
         break;
+      case 'addCOAWithFile':
+        result = addCOAWithFile(postData);
+        break;
       default:
-        result = { success: false, error: 'Geçersiz action' };
+        result = { success: false, error: 'Geçersiz POST action: ' + action };
     }
   } catch(error) {
-    result = { success: false, error: error.toString() };
+    result = { 
+      success: false, 
+      error: error.toString(),
+      stack: error.stack,
+      action: action
+    };
+    logError('doPost', error, action);
+  }
+  
+  return createResponse(result, e.parameter.callback);
+}
+
+// ==================== Yardımcı Fonksiyonlar ====================
+
+function createResponse(result, callback) {
+  const output = JSON.stringify(result);
+  
+  if (callback) {
+    return ContentService
+      .createTextOutput(callback + '(' + output + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
   
   return ContentService
-    .createTextOutput(JSON.stringify(result))
+    .createTextOutput(output)
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function parseFormData(contents) {
+  const postData = {};
+  const params = contents.split('&');
+  
+  for (const param of params) {
+    const idx = param.indexOf('=');
+    if (idx > 0) {
+      const key = decodeURIComponent(param.substring(0, idx));
+      const value = decodeURIComponent(param.substring(idx + 1).replace(/\+/g, ' '));
+      
+      if (key === 'data' || key === 'recordData') {
+        try {
+          postData[key] = JSON.parse(value);
+        } catch(e) {
+          postData[key] = value;
+        }
+      } else {
+        postData[key] = value;
+      }
+    }
+  }
+  
+  return postData;
+}
+
+function testConnection() {
+  try {
+    const sheet = getSheet();
+    const folder = getDriveFolder();
+    
+    return { 
+      success: true, 
+      message: 'Bağlantı başarılı!', 
+      time: new Date().toISOString(),
+      sheetName: sheet.getName(),
+      folderName: folder.getName(),
+      folderId: folder.getId()
+    };
+  } catch(error) {
+    return { 
+      success: false, 
+      error: 'Bağlantı testi başarısız: ' + error.toString()
+    };
+  }
+}
+
+function logError(functionName, error, params) {
+  try {
+    console.error('[' + functionName + '] Error:', error.toString());
+    console.error('Params:', JSON.stringify(params || {}));
+    console.error('Stack:', error.stack);
+  } catch(e) {
+    // Loglama hatası önemsiz
+  }
 }
 
 // ==================== Drive İşlemleri ====================
@@ -126,8 +227,13 @@ function getDriveFolder() {
   } else {
     // Klasör yoksa oluştur
     folder = DriveApp.createFolder('COA_Sertifikalar');
-    // Herkese açık yap (görüntüleme)
+  }
+  
+  // Herkese açık yap (görüntüleme)
+  try {
     folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch(e) {
+    // Paylaşım ayarı zaten yapılmış olabilir
   }
   
   return folder;
@@ -137,127 +243,430 @@ function uploadFileToDrive(base64Data, fileName, mimeType) {
   try {
     const folder = getDriveFolder();
     
+    // Base64 prefix'i temizle
+    let base64Content = base64Data;
+    if (base64Data.includes(',')) {
+      base64Content = base64Data.split(',')[1];
+    }
+    
     // Base64'ten blob oluştur
-    const base64Content = base64Data.split(',')[1] || base64Data;
-    const blob = Utilities.newBlob(Utilities.base64Decode(base64Content), mimeType, fileName);
+    const decoded = Utilities.base64Decode(base64Content);
+    const blob = Utilities.newBlob(decoded, mimeType, fileName);
     
     // Dosyayı Drive'a kaydet
     const file = folder.createFile(blob);
     
     // Herkese açık yap
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    try {
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    } catch(e) {
+      // Paylaşım ayarı hatası
+    }
     
-    // Görüntüleme linkini al
+    // URL'leri oluştur
     const fileId = file.getId();
-    const viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
-    const directUrl = 'https://drive.google.com/uc?id=' + fileId;
     
     return {
       success: true,
       fileId: fileId,
-      viewUrl: viewUrl,
-      directUrl: directUrl,
-      fileName: fileName
+      viewUrl: 'https://drive.google.com/file/d/' + fileId + '/view',
+      directUrl: 'https://drive.google.com/uc?export=view&id=' + fileId,
+      thumbnailUrl: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w400',
+      downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId,
+      fileName: fileName,
+      size: decoded.length
     };
   } catch(error) {
-    return { success: false, error: error.toString() };
+    return { 
+      success: false, 
+      error: 'Drive yükleme hatası: ' + error.toString() 
+    };
   }
 }
 
-// ==================== Chunk Upload İşlemleri ====================
-
-function uploadChunk(params) {
-  const uploadId = params.uploadId;
-  const chunkIndex = parseInt(params.chunkIndex);
-  const totalChunks = parseInt(params.totalChunks);
-  const chunk = params.chunk;
-  
-  if (!uploadId || chunkIndex === undefined || !chunk) {
-    return { success: false, error: 'Eksik parametreler' };
+function deleteFileFromDrive(fileId) {
+  try {
+    if (!fileId) return { success: true, message: 'Dosya ID boş' };
+    
+    const file = DriveApp.getFileById(fileId);
+    file.setTrashed(true);
+    
+    return { success: true, message: 'Dosya silindi' };
+  } catch(error) {
+    return { success: false, error: 'Dosya silinemedi: ' + error.toString() };
   }
-  
-  // Cache'i al veya oluştur
-  const cache = CacheService.getScriptCache();
-  const cacheKey = 'upload_' + uploadId;
-  
-  // Mevcut chunk'ları al
-  let chunks = {};
-  const cached = cache.get(cacheKey);
-  if (cached) {
-    chunks = JSON.parse(cached);
-  }
-  
-  // Yeni chunk'ı ekle
-  chunks[chunkIndex] = chunk;
-  chunks.totalChunks = totalChunks;
-  
-  // Cache'e kaydet (6 saat geçerli)
-  cache.put(cacheKey, JSON.stringify(chunks), 21600);
-  
-  const receivedCount = Object.keys(chunks).filter(k => k !== 'totalChunks').length;
-  
-  return {
-    success: true,
-    uploadId: uploadId,
-    chunkIndex: chunkIndex,
-    received: receivedCount,
-    total: totalChunks
-  };
 }
 
-function finalizeUpload(params) {
-  const uploadId = params.uploadId;
-  const fileName = params.fileName;
-  const mimeType = params.mimeType;
-  const recordData = params.recordData ? JSON.parse(params.recordData) : null;
+// ==================== Direkt Dosya Yükleme (Küçük Dosyalar) ====================
+
+function uploadFileDirectly(params) {
+  const { fileData, fileName, mimeType, recordData } = params;
   
-  if (!uploadId || !fileName) {
-    return { success: false, error: 'Eksik parametreler' };
+  if (!fileData || !fileName) {
+    return { success: false, error: 'Dosya verisi veya adı eksik' };
   }
   
-  const cache = CacheService.getScriptCache();
-  const cacheKey = 'upload_' + uploadId;
-  const cached = cache.get(cacheKey);
+  // Boyut kontrolü (5MB limit for direct upload)
+  const base64Content = fileData.includes(',') ? fileData.split(',')[1] : fileData;
+  const estimatedSize = base64Content.length * 0.75; // Base64 overhead
   
-  if (!cached) {
-    return { success: false, error: 'Upload bulunamadı veya süre doldu' };
-  }
-  
-  const chunks = JSON.parse(cached);
-  const totalChunks = chunks.totalChunks;
-  
-  // Tüm chunk'ları birleştir
-  let fullBase64 = '';
-  for (let i = 0; i < totalChunks; i++) {
-    if (!chunks[i]) {
-      return { success: false, error: 'Eksik chunk: ' + i };
-    }
-    fullBase64 += chunks[i];
+  if (estimatedSize > 5 * 1024 * 1024) {
+    return { 
+      success: false, 
+      error: 'Dosya çok büyük. 5MB üzeri dosyalar için chunk upload kullanın.',
+      useChunkUpload: true
+    };
   }
   
   // Drive'a yükle
-  const uploadResult = uploadFileToDrive(fullBase64, fileName, mimeType);
+  const uploadResult = uploadFileToDrive(fileData, fileName, mimeType || 'application/octet-stream');
   
   if (!uploadResult.success) {
     return uploadResult;
   }
   
-  // Cache'i temizle
-  cache.remove(cacheKey);
-  
-  // Eğer kayıt verisi varsa, Sheets'e de ekle
+  // Kayıt verisi varsa Sheet'e ekle
   if (recordData) {
-    recordData.fileUrl = uploadResult.viewUrl;
-    recordData.driveFileId = uploadResult.fileId;
-    addCOA(recordData);
+    const record = typeof recordData === 'string' ? JSON.parse(recordData) : recordData;
+    record.fileUrl = uploadResult.viewUrl;
+    record.driveFileId = uploadResult.fileId;
+    record.fileName = fileName;
+    record.fileType = mimeType;
+    // fileData'yı Sheet'e KAYDETME - sadece Drive'da olsun
+    delete record.fileData;
+    
+    const addResult = addCOA(record);
+    if (!addResult.success) {
+      return { 
+        success: false, 
+        error: 'Dosya yüklendi ama kayıt eklenemedi: ' + addResult.error,
+        fileId: uploadResult.fileId
+      };
+    }
+    
+    return {
+      success: true,
+      message: 'COA kaydı ve dosya başarıyla eklendi',
+      id: addResult.id,
+      fileId: uploadResult.fileId,
+      viewUrl: uploadResult.viewUrl
+    };
+  }
+  
+  return uploadResult;
+}
+
+// ==================== Chunk Upload İşlemleri (Büyük Dosyalar) ====================
+
+function initChunkUpload(params) {
+  const { fileName, mimeType, totalSize, totalChunks } = params;
+  
+  if (!fileName || !totalChunks) {
+    return { success: false, error: 'Dosya adı ve chunk sayısı gerekli' };
+  }
+  
+  // Benzersiz upload ID oluştur
+  const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  
+  // Upload metadata'sını cache'e kaydet
+  const cache = CacheService.getScriptCache();
+  const metadata = {
+    fileName: fileName,
+    mimeType: mimeType || 'application/octet-stream',
+    totalSize: totalSize || 0,
+    totalChunks: parseInt(totalChunks),
+    receivedChunks: [],
+    startTime: new Date().toISOString(),
+    status: 'initialized'
+  };
+  
+  cache.put('meta_' + uploadId, JSON.stringify(metadata), CACHE_DURATION);
+  
+  return {
+    success: true,
+    uploadId: uploadId,
+    message: 'Upload başlatıldı',
+    totalChunks: metadata.totalChunks,
+    maxChunkSize: MAX_CHUNK_SIZE
+  };
+}
+
+function uploadChunk(params) {
+  const { uploadId, chunkIndex, totalChunks, chunk } = params;
+  
+  if (!uploadId || chunkIndex === undefined || !chunk) {
+    return { success: false, error: 'Eksik parametreler: uploadId, chunkIndex ve chunk gerekli' };
+  }
+  
+  const cache = CacheService.getScriptCache();
+  const metaKey = 'meta_' + uploadId;
+  const chunkKey = 'chunk_' + uploadId + '_' + chunkIndex;
+  
+  // Metadata kontrol
+  const metaStr = cache.get(metaKey);
+  if (!metaStr) {
+    return { 
+      success: false, 
+      error: 'Upload oturumu bulunamadı veya süresi doldu. Lütfen yeniden başlatın.',
+      expired: true
+    };
+  }
+  
+  let metadata;
+  try {
+    metadata = JSON.parse(metaStr);
+  } catch(e) {
+    return { success: false, error: 'Metadata parse hatası' };
+  }
+  
+  // Chunk boyut kontrolü
+  if (chunk.length > MAX_CHUNK_SIZE * 1.5) {
+    return { 
+      success: false, 
+      error: 'Chunk çok büyük. Maksimum: ' + MAX_CHUNK_SIZE + ' karakter'
+    };
+  }
+  
+  // Chunk'ı kaydet
+  try {
+    cache.put(chunkKey, chunk, CACHE_DURATION);
+  } catch(e) {
+    return { 
+      success: false, 
+      error: 'Chunk kaydedilemedi: ' + e.toString(),
+      chunkIndex: chunkIndex
+    };
+  }
+  
+  // Metadata güncelle
+  const idx = parseInt(chunkIndex);
+  if (!metadata.receivedChunks.includes(idx)) {
+    metadata.receivedChunks.push(idx);
+  }
+  metadata.status = 'uploading';
+  metadata.lastUpdate = new Date().toISOString();
+  
+  cache.put(metaKey, JSON.stringify(metadata), CACHE_DURATION);
+  
+  const total = totalChunks ? parseInt(totalChunks) : metadata.totalChunks;
+  const progress = Math.round((metadata.receivedChunks.length / total) * 100);
+  
+  return {
+    success: true,
+    uploadId: uploadId,
+    chunkIndex: idx,
+    received: metadata.receivedChunks.length,
+    total: total,
+    progress: progress,
+    isComplete: metadata.receivedChunks.length >= total
+  };
+}
+
+function getUploadStatus(uploadId) {
+  if (!uploadId) {
+    return { success: false, error: 'Upload ID gerekli' };
+  }
+  
+  const cache = CacheService.getScriptCache();
+  const metaStr = cache.get('meta_' + uploadId);
+  
+  if (!metaStr) {
+    return { success: false, error: 'Upload bulunamadı', expired: true };
+  }
+  
+  const metadata = JSON.parse(metaStr);
+  const progress = Math.round((metadata.receivedChunks.length / metadata.totalChunks) * 100);
+  
+  return {
+    success: true,
+    uploadId: uploadId,
+    fileName: metadata.fileName,
+    status: metadata.status,
+    received: metadata.receivedChunks.length,
+    total: metadata.totalChunks,
+    progress: progress,
+    missingChunks: getMissingChunks(metadata.receivedChunks, metadata.totalChunks)
+  };
+}
+
+function getMissingChunks(receivedChunks, totalChunks) {
+  const missing = [];
+  for (let i = 0; i < totalChunks; i++) {
+    if (!receivedChunks.includes(i)) {
+      missing.push(i);
+    }
+  }
+  return missing;
+}
+
+function cancelUpload(uploadId) {
+  if (!uploadId) {
+    return { success: false, error: 'Upload ID gerekli' };
+  }
+  
+  const cache = CacheService.getScriptCache();
+  const metaStr = cache.get('meta_' + uploadId);
+  
+  if (metaStr) {
+    const metadata = JSON.parse(metaStr);
+    
+    // Tüm chunk'ları sil
+    const keysToDelete = ['meta_' + uploadId];
+    for (let i = 0; i < metadata.totalChunks; i++) {
+      keysToDelete.push('chunk_' + uploadId + '_' + i);
+    }
+    
+    cache.removeAll(keysToDelete);
+  }
+  
+  return { success: true, message: 'Upload iptal edildi' };
+}
+
+function finalizeUpload(params) {
+  const { uploadId, fileName, mimeType, recordData } = params;
+  
+  if (!uploadId) {
+    return { success: false, error: 'Upload ID gerekli' };
+  }
+  
+  const cache = CacheService.getScriptCache();
+  const metaKey = 'meta_' + uploadId;
+  const metaStr = cache.get(metaKey);
+  
+  if (!metaStr) {
+    return { 
+      success: false, 
+      error: 'Upload bulunamadı veya süre doldu. Lütfen yeniden yükleyin.',
+      expired: true
+    };
+  }
+  
+  let metadata;
+  try {
+    metadata = JSON.parse(metaStr);
+  } catch(e) {
+    return { success: false, error: 'Metadata parse hatası' };
+  }
+  
+  const totalChunks = metadata.totalChunks;
+  
+  // Eksik chunk kontrolü
+  const missing = getMissingChunks(metadata.receivedChunks, totalChunks);
+  if (missing.length > 0) {
+    return { 
+      success: false, 
+      error: 'Eksik chunk\'lar var: ' + missing.join(', '),
+      missingChunks: missing,
+      received: metadata.receivedChunks.length,
+      total: totalChunks
+    };
+  }
+  
+  // Tüm chunk'ları birleştir
+  let fullBase64 = '';
+  const chunkKeys = [];
+  
+  for (let i = 0; i < totalChunks; i++) {
+    const chunkKey = 'chunk_' + uploadId + '_' + i;
+    chunkKeys.push(chunkKey);
+  }
+  
+  // Chunk'ları toplu al (daha hızlı)
+  const chunks = cache.getAll(chunkKeys);
+  
+  for (let i = 0; i < totalChunks; i++) {
+    const chunkKey = 'chunk_' + uploadId + '_' + i;
+    const chunkData = chunks[chunkKey];
+    
+    if (!chunkData) {
+      return { 
+        success: false, 
+        error: 'Chunk verisi alınamadı: ' + i,
+        chunkIndex: i
+      };
+    }
+    
+    fullBase64 += chunkData;
+  }
+  
+  // Drive'a yükle
+  const finalFileName = fileName || metadata.fileName;
+  const finalMimeType = mimeType || metadata.mimeType;
+  
+  const uploadResult = uploadFileToDrive(fullBase64, finalFileName, finalMimeType);
+  
+  if (!uploadResult.success) {
+    return {
+      success: false,
+      error: 'Drive yükleme hatası: ' + uploadResult.error
+    };
+  }
+  
+  // Cache'i temizle
+  try {
+    cache.removeAll([metaKey, ...chunkKeys]);
+  } catch(e) {
+    // Temizleme hatası önemsiz
+  }
+  
+  // Kayıt verisi varsa Sheet'e ekle
+  if (recordData) {
+    const record = typeof recordData === 'string' ? JSON.parse(recordData) : recordData;
+    record.fileUrl = uploadResult.viewUrl;
+    record.driveFileId = uploadResult.fileId;
+    record.fileName = finalFileName;
+    record.fileType = finalMimeType;
+    // fileData'yı Sheet'e KAYDETME
+    delete record.fileData;
+    
+    const addResult = addCOA(record);
+    
+    return {
+      success: true,
+      message: 'COA kaydı ve dosya başarıyla eklendi',
+      id: addResult.id,
+      fileId: uploadResult.fileId,
+      viewUrl: uploadResult.viewUrl,
+      directUrl: uploadResult.directUrl,
+      thumbnailUrl: uploadResult.thumbnailUrl
+    };
   }
   
   return {
     success: true,
+    message: 'Dosya başarıyla yüklendi',
     fileId: uploadResult.fileId,
     viewUrl: uploadResult.viewUrl,
-    directUrl: uploadResult.directUrl
+    directUrl: uploadResult.directUrl,
+    thumbnailUrl: uploadResult.thumbnailUrl,
+    fileName: finalFileName
   };
+}
+
+// Dosya ile birlikte COA kaydı ekle (tek seferde)
+function addCOAWithFile(data) {
+  const { fileData, fileName, mimeType, ...recordData } = data;
+  
+  if (fileData && fileName) {
+    // Önce dosyayı yükle
+    const uploadResult = uploadFileToDrive(fileData, fileName, mimeType || 'application/octet-stream');
+    
+    if (!uploadResult.success) {
+      return { 
+        success: false, 
+        error: 'Dosya yüklenemedi: ' + uploadResult.error 
+      };
+    }
+    
+    // Kayıt verisine dosya bilgilerini ekle
+    recordData.fileUrl = uploadResult.viewUrl;
+    recordData.driveFileId = uploadResult.fileId;
+    recordData.fileName = fileName;
+    recordData.fileType = mimeType;
+  }
+  
+  // Sheet'e kaydet (fileData olmadan)
+  return addCOA(recordData);
 }
 
 // ==================== Sheet İşlemleri ====================
@@ -275,220 +684,484 @@ function getSheet() {
   
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileData', 'fileUrl', 'driveFileId', 'createdAt'];
+  }
+  
+  // Header kontrolü - sheet boşsa veya header yoksa ekle
+  const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'createdAt', 'updatedAt'];
+  
+  if (sheet.getLastRow() === 0 || sheet.getRange(1, 1).getValue() !== 'id') {
+    // Header'ları ekle
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
+    
+    // Sütun genişliklerini ayarla
+    sheet.setColumnWidth(1, 150); // id
+    sheet.setColumnWidth(2, 150); // supplier
+    sheet.setColumnWidth(3, 120); // materialCode
+    sheet.setColumnWidth(4, 100); // deliveryDate
+    sheet.setColumnWidth(5, 100); // lotNumber
+    sheet.setColumnWidth(6, 200); // notes
+    sheet.setColumnWidth(9, 300); // fileUrl
+    
+    console.log('Header\'lar eklendi: ' + headers.join(', '));
   }
   
   return sheet;
 }
 
+function getHeaders(sheet) {
+  const lastCol = sheet.getLastColumn();
+  if (lastCol === 0) return [];
+  return sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+}
+
 function getAllCOA() {
-  const sheet = getSheet();
-  const lastRow = sheet.getLastRow();
-  
-  if (lastRow <= 1) {
-    return { success: true, data: [] };
-  }
-  
-  const data = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
-  const headers = data[0];
-  const records = [];
-  
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0]) { // id varsa
-      const record = {};
-      for (let j = 0; j < headers.length; j++) {
-        record[headers[j]] = data[i][j];
-      }
-      records.push(record);
+  try {
+    const sheet = getSheet();
+    const lastRow = sheet.getLastRow();
+    
+    if (lastRow <= 1) {
+      return { success: true, data: [], count: 0 };
     }
+    
+    const lastCol = sheet.getLastColumn();
+    const data = sheet.getRange(1, 1, lastRow, lastCol).getValues();
+    const headers = data[0];
+    const records = [];
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0]) { // id varsa
+        const record = {};
+        for (let j = 0; j < headers.length; j++) {
+          // fileData sütununu atla (çok büyük olabilir)
+          if (headers[j] !== 'fileData') {
+            record[headers[j]] = data[i][j];
+          }
+        }
+        records.push(record);
+      }
+    }
+    
+    // En yeniler başta
+    records.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    
+    return { success: true, data: records, count: records.length };
+  } catch(error) {
+    return { success: false, error: 'Veriler alınamadı: ' + error.toString() };
   }
-  
-  // En yeniler başta
-  records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  
-  return { success: true, data: records, count: records.length };
 }
 
 function getCOA(id) {
-  const sheet = getSheet();
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) {
-      const record = {};
-      for (let j = 0; j < headers.length; j++) {
-        record[headers[j]] = data[i][j];
-      }
-      return { success: true, data: record };
-    }
+  if (!id) {
+    return { success: false, error: 'ID gerekli' };
   }
   
-  return { success: false, error: 'Kayıt bulunamadı' };
+  try {
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == id) {
+        const record = {};
+        for (let j = 0; j < headers.length; j++) {
+          if (headers[j] !== 'fileData') {
+            record[headers[j]] = data[i][j];
+          }
+        }
+        return { success: true, data: record };
+      }
+    }
+    
+    return { success: false, error: 'Kayıt bulunamadı: ' + id };
+  } catch(error) {
+    return { success: false, error: 'Kayıt alınamadı: ' + error.toString() };
+  }
+}
+
+function searchCOA(query, field) {
+  if (!query) {
+    return getAllCOA();
+  }
+  
+  try {
+    const sheet = getSheet();
+    const lastRow = sheet.getLastRow();
+    
+    if (lastRow <= 1) {
+      return { success: true, data: [], count: 0 };
+    }
+    
+    const data = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
+    const headers = data[0];
+    const records = [];
+    const searchQuery = query.toLowerCase();
+    
+    // Aranacak sütunları belirle
+    const searchFields = field ? [field] : ['supplier', 'materialCode', 'lotNumber', 'notes'];
+    const fieldIndices = searchFields.map(f => headers.indexOf(f)).filter(i => i >= 0);
+    
+    for (let i = 1; i < data.length; i++) {
+      if (!data[i][0]) continue;
+      
+      let match = false;
+      for (const idx of fieldIndices) {
+        const value = (data[i][idx] || '').toString().toLowerCase();
+        if (value.includes(searchQuery)) {
+          match = true;
+          break;
+        }
+      }
+      
+      if (match) {
+        const record = {};
+        for (let j = 0; j < headers.length; j++) {
+          if (headers[j] !== 'fileData') {
+            record[headers[j]] = data[i][j];
+          }
+        }
+        records.push(record);
+      }
+    }
+    
+    records.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+    
+    return { success: true, data: records, count: records.length, query: query };
+  } catch(error) {
+    return { success: false, error: 'Arama hatası: ' + error.toString() };
+  }
 }
 
 function addCOA(record) {
-  const sheet = getSheet();
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  
-  // ID kontrolü
-  if (!record.id) {
-    record.id = 'coa_' + Date.now();
+  if (!record) {
+    return { success: false, error: 'Kayıt verisi gerekli' };
   }
   
-  // createdAt yoksa ekle
-  if (!record.createdAt) {
-    record.createdAt = new Date().toISOString();
+  try {
+    const sheet = getSheet();
+    const headers = getHeaders(sheet);
+    
+    // ID oluştur
+    if (!record.id) {
+      record.id = 'coa_' + Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+    }
+    
+    // Tarihler
+    const now = new Date().toISOString();
+    if (!record.createdAt) {
+      record.createdAt = now;
+    }
+    record.updatedAt = now;
+    
+    // fileData'yı Sheet'e kaydetme
+    delete record.fileData;
+    
+    // Satır verisini oluştur
+    const row = headers.map(header => {
+      const value = record[header];
+      return value !== undefined ? value : '';
+    });
+    
+    // Satırı ekle
+    sheet.appendRow(row);
+    
+    return { 
+      success: true, 
+      id: record.id, 
+      message: 'COA kaydı eklendi',
+      timestamp: now
+    };
+  } catch(error) {
+    return { success: false, error: 'Kayıt eklenemedi: ' + error.toString() };
   }
-  
-  // Satır verisini oluştur
-  const row = headers.map(header => record[header] || '');
-  
-  // Satırı ekle
-  sheet.appendRow(row);
-  
-  return { 
-    success: true, 
-    id: record.id, 
-    message: 'COA kaydedildi',
-    timestamp: new Date().toISOString()
-  };
 }
 
 function updateCOA(id, newData) {
-  const sheet = getSheet();
-  const data = sheet.getDataRange().getValues();
-  const headers = data[0];
-  
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) {
-      // Mevcut veriyi güncelle
-      const row = headers.map((header, j) => {
-        if (newData.hasOwnProperty(header)) {
-          return newData[header];
-        }
-        return data[i][j];
-      });
-      
-      sheet.getRange(i + 1, 1, 1, headers.length).setValues([row]);
-      return { success: true, message: 'Kayıt güncellendi' };
-    }
+  if (!id) {
+    return { success: false, error: 'ID gerekli' };
   }
   
-  return { success: false, error: 'Kayıt bulunamadı' };
+  try {
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == id) {
+        // fileData'yı güncelleme
+        delete newData.fileData;
+        newData.updatedAt = new Date().toISOString();
+        
+        // Mevcut veriyi güncelle
+        const row = headers.map((header, j) => {
+          if (newData.hasOwnProperty(header) && header !== 'id' && header !== 'createdAt') {
+            return newData[header];
+          }
+          return data[i][j];
+        });
+        
+        sheet.getRange(i + 1, 1, 1, headers.length).setValues([row]);
+        return { success: true, message: 'Kayıt güncellendi', id: id };
+      }
+    }
+    
+    return { success: false, error: 'Kayıt bulunamadı: ' + id };
+  } catch(error) {
+    return { success: false, error: 'Güncelleme hatası: ' + error.toString() };
+  }
 }
 
 function deleteCOA(id) {
-  const sheet = getSheet();
-  const data = sheet.getDataRange().getValues();
-  
-  for (let i = 1; i < data.length; i++) {
-    if (data[i][0] == id) {
-      sheet.deleteRow(i + 1);
-      return { success: true, message: 'Kayıt silindi' };
-    }
+  if (!id) {
+    return { success: false, error: 'ID gerekli' };
   }
   
-  return { success: false, error: 'Kayıt bulunamadı' };
+  try {
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const driveFileIdCol = headers.indexOf('driveFileId');
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == id) {
+        // Drive'daki dosyayı da sil
+        if (driveFileIdCol >= 0 && data[i][driveFileIdCol]) {
+          deleteFileFromDrive(data[i][driveFileIdCol]);
+        }
+        
+        sheet.deleteRow(i + 1);
+        return { success: true, message: 'Kayıt ve dosya silindi', id: id };
+      }
+    }
+    
+    return { success: false, error: 'Kayıt bulunamadı: ' + id };
+  } catch(error) {
+    return { success: false, error: 'Silme hatası: ' + error.toString() };
+  }
 }
 
 function getStats() {
-  const sheet = getSheet();
-  const lastRow = sheet.getLastRow();
-  
-  if (lastRow <= 1) {
-    return { success: true, data: { total: 0, suppliers: 0, thisMonth: 0 } };
-  }
-  
-  const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  
-  const supplierCol = headers.indexOf('supplier');
-  const dateCol = headers.indexOf('deliveryDate');
-  
-  const suppliers = new Set();
-  let thisMonth = 0;
-  const currentMonth = new Date().toISOString().slice(0, 7);
-  
-  for (let i = 0; i < data.length; i++) {
-    if (data[i][0]) {
-      if (supplierCol >= 0 && data[i][supplierCol]) {
-        suppliers.add(data[i][supplierCol]);
-      }
-      if (dateCol >= 0 && data[i][dateCol]) {
-        const dateStr = data[i][dateCol].toString();
-        if (dateStr.startsWith(currentMonth)) {
-          thisMonth++;
+  try {
+    const sheet = getSheet();
+    const lastRow = sheet.getLastRow();
+    
+    if (lastRow <= 1) {
+      return { success: true, data: { total: 0, suppliers: 0, thisMonth: 0, thisWeek: 0 } };
+    }
+    
+    const data = sheet.getRange(2, 1, lastRow - 1, sheet.getLastColumn()).getValues();
+    const headers = getHeaders(sheet);
+    
+    const supplierCol = headers.indexOf('supplier');
+    const dateCol = headers.indexOf('deliveryDate');
+    const createdCol = headers.indexOf('createdAt');
+    
+    const suppliers = new Set();
+    let thisMonth = 0;
+    let thisWeek = 0;
+    
+    const now = new Date();
+    const currentMonth = now.toISOString().slice(0, 7);
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    
+    for (let i = 0; i < data.length; i++) {
+      if (data[i][0]) {
+        // Tedarikçiler
+        if (supplierCol >= 0 && data[i][supplierCol]) {
+          suppliers.add(data[i][supplierCol].toString().trim());
+        }
+        
+        // Bu ay eklenenler
+        const createdDate = createdCol >= 0 ? data[i][createdCol] : null;
+        if (createdDate) {
+          const dateStr = createdDate.toString();
+          if (dateStr.startsWith(currentMonth)) {
+            thisMonth++;
+          }
+          
+          // Bu hafta eklenenler
+          try {
+            const created = new Date(createdDate);
+            if (created >= weekAgo) {
+              thisWeek++;
+            }
+          } catch(e) {}
         }
       }
     }
+    
+    return { 
+      success: true, 
+      data: { 
+        total: data.filter(r => r[0]).length, 
+        suppliers: suppliers.size, 
+        thisMonth: thisMonth,
+        thisWeek: thisWeek,
+        supplierList: Array.from(suppliers).sort()
+      } 
+    };
+  } catch(error) {
+    return { success: false, error: 'İstatistik hatası: ' + error.toString() };
   }
-  
-  return { 
-    success: true, 
-    data: { 
-      total: data.filter(r => r[0]).length, 
-      suppliers: suppliers.size, 
-      thisMonth: thisMonth 
-    } 
-  };
 }
 
-// ==================== Test Fonksiyonu ====================
+// ==================== Test Fonksiyonları ====================
+
 function testAPI() {
-  // Manuel test için
-  console.log('Test başlıyor...');
+  console.log('=== COA API Test Başlıyor ===');
+  console.log('Zaman: ' + new Date().toISOString());
   
-  // 1. Sheet oluştur/kontrol et
+  // 1. Bağlantı testi
+  const connTest = testConnection();
+  console.log('1. Bağlantı testi:', JSON.stringify(connTest));
+  
+  if (!connTest.success) {
+    console.log('HATA: Bağlantı başarısız!');
+    return;
+  }
+  
+  // 2. Sheet kontrol
   const sheet = getSheet();
-  console.log('Sheet: ' + sheet.getName());
+  console.log('2. Sheet adı:', sheet.getName());
+  console.log('   Satır sayısı:', sheet.getLastRow());
   
-  // 2. Test kaydı ekle
+  // 3. Test kaydı ekle
   const testRecord = {
-    id: 'test_' + Date.now(),
-    supplier: 'Test Tedarikçi',
-    materialCode: 'TEST001',
-    deliveryDate: '2026-01-30',
-    lotNumber: 'LOT123',
-    notes: 'Test kaydı',
-    fileName: 'test.jpg',
-    fileType: 'image/jpeg',
-    fileData: 'data:image/jpeg;base64,TEST',
-    createdAt: new Date().toISOString()
+    supplier: 'Test Tedarikçi ' + Date.now(),
+    materialCode: 'TEST-001',
+    deliveryDate: new Date().toISOString().split('T')[0],
+    lotNumber: 'LOT-' + Math.random().toString(36).substr(2, 6).toUpperCase(),
+    notes: 'Otomatik test kaydı'
   };
   
   const addResult = addCOA(testRecord);
-  console.log('Ekleme sonucu: ' + JSON.stringify(addResult));
+  console.log('3. Kayıt ekleme:', JSON.stringify(addResult));
   
-  // 3. Tüm kayıtları al
+  // 4. Tüm kayıtları al
   const allResult = getAllCOA();
-  console.log('Toplam kayıt: ' + allResult.count);
+  console.log('4. Toplam kayıt:', allResult.count);
   
-  // 4. İstatistikler
+  // 5. Arama testi
+  const searchResult = searchCOA('Test', 'supplier');
+  console.log('5. Arama sonucu:', searchResult.count, 'kayıt bulundu');
+  
+  // 6. İstatistikler
   const stats = getStats();
-  console.log('İstatistikler: ' + JSON.stringify(stats));
+  console.log('6. İstatistikler:', JSON.stringify(stats.data));
+  
+  // 7. Drive klasör kontrolü
+  const folder = getDriveFolder();
+  console.log('7. Drive klasörü:', folder.getName(), '- ID:', folder.getId());
+  
+  console.log('=== Test Tamamlandı ===');
+  
+  return {
+    connection: connTest.success,
+    sheetName: sheet.getName(),
+    totalRecords: allResult.count,
+    stats: stats.data,
+    folderId: folder.getId()
+  };
+}
+
+function testUpload() {
+  console.log('=== Upload Test Başlıyor ===');
+  
+  // Küçük bir test dosyası oluştur (1x1 pixel şeffaf PNG)
+  const testBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  const fileName = 'test_' + Date.now() + '.png';
+  
+  // Direkt upload test
+  const result = uploadFileToDrive(testBase64, fileName, 'image/png');
+  console.log('Upload sonucu:', JSON.stringify(result));
+  
+  if (result.success) {
+    console.log('Dosya görüntüleme linki:', result.viewUrl);
+    
+    // Dosyayı sil (test için)
+    const deleteResult = deleteFileFromDrive(result.fileId);
+    console.log('Silme sonucu:', JSON.stringify(deleteResult));
+  }
+  
+  console.log('=== Upload Test Tamamlandı ===');
+  return result;
+}
+
+// ==================== Kurulum ve Yardım ====================
+
+function onOpen() {
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('COA Arşiv')
+    .addItem('API Testi Çalıştır', 'testAPI')
+    .addItem('Upload Testi', 'testUpload')
+    .addSeparator()
+    .addItem('Yardım', 'showHelp')
+    .addToUi();
+}
+
+function showHelp() {
+  const html = HtmlService.createHtmlOutput(`
+    <h2>COA Arşiv API</h2>
+    <h3>Kurulum:</h3>
+    <ol>
+      <li>Dağıt → Yeni dağıtım</li>
+      <li>Tür: Web uygulaması</li>
+      <li>Yürütme: Ben</li>
+      <li>Erişim: Herkes</li>
+      <li>URL'yi kopyala</li>
+    </ol>
+    <h3>API Endpoints:</h3>
+    <ul>
+      <li><b>test</b> - Bağlantı testi</li>
+      <li><b>getAllCOA</b> - Tüm kayıtlar</li>
+      <li><b>getCOA</b> - Tek kayıt (id gerekli)</li>
+      <li><b>searchCOA</b> - Arama (query, field)</li>
+      <li><b>addCOA</b> - Kayıt ekle</li>
+      <li><b>updateCOA</b> - Kayıt güncelle</li>
+      <li><b>deleteCOA</b> - Kayıt sil</li>
+      <li><b>getStats</b> - İstatistikler</li>
+      <li><b>uploadFile</b> - Dosya yükle (küçük)</li>
+      <li><b>initUpload</b> - Chunk upload başlat</li>
+      <li><b>uploadChunk</b> - Chunk gönder</li>
+      <li><b>finalizeUpload</b> - Upload tamamla</li>
+    </ul>
+    <p><b>Not:</b> Her kod değişikliğinde YENİ dağıtım yapın!</p>
+  `)
+  .setWidth(400)
+  .setHeight(500);
+  
+  SpreadsheetApp.getUi().showModalDialog(html, 'COA Arşiv Yardım');
 }
 
 // ==================== Kurulum Talimatları ====================
 /*
-KURULUM ADIMLARI:
-
-1. Google Sheets aç: https://sheets.google.com
-2. Yeni bir Spreadsheet oluştur
-3. Menüden: Uzantılar → Apps Script
-4. Bu kodun tamamını yapıştır
-5. Kaydet (Ctrl+S)
-6. testAPI() fonksiyonunu çalıştır (test için)
-7. Dağıt → Yeni dağıtım:
-   - Tür: Web uygulaması
-   - Yürütme: Ben
-   - Erişim: Herkes (anonim dahil)
-8. URL'yi kopyala
-9. coa-arsiv.html sayfasında bu URL'yi gir
-
-NOT: Her kod değişikliğinde YENİ DAĞITIM yapın!
-Mevcut dağıtımı güncellemeyin, yeni oluşturun.
+╔════════════════════════════════════════════════════════════════╗
+║                    COA ARŞİV API v2.0                          ║
+║                  Kurulum Talimatları                           ║
+╠════════════════════════════════════════════════════════════════╣
+║                                                                ║
+║  1. Google Sheets aç: https://sheets.google.com                ║
+║  2. Yeni bir Spreadsheet oluştur                               ║
+║  3. Menüden: Uzantılar → Apps Script                           ║
+║  4. Bu kodun TAMAMINI yapıştır                                 ║
+║  5. Kaydet (Ctrl+S)                                            ║
+║  6. testAPI() fonksiyonunu çalıştır (izinleri onaylamak için)  ║
+║  7. Dağıt → Yeni dağıtım:                                      ║
+║     - Tür: Web uygulaması                                      ║
+║     - Yürütme: Ben (your email)                                ║
+║     - Erişim: Herkes (anonim dahil)                            ║
+║  8. "Dağıt" butonuna bas                                       ║
+║  9. Web uygulaması URL'sini kopyala                            ║
+║  10. coa-arsiv.html'de bu URL'yi ayarla                        ║
+║                                                                ║
+╠════════════════════════════════════════════════════════════════╣
+║  ÖNEMLİ NOTLAR:                                                ║
+║  • Her kod değişikliğinde YENİ DAĞITIM yapın!                  ║
+║  • Mevcut dağıtımı güncellemeyin, yeni oluşturun               ║
+║  • Drive'da "COA_Sertifikalar" klasörü otomatik oluşur         ║
+║  • fileData Sheet'e KAYDEDİLMEZ, sadece Drive'da tutulur       ║
+║  • Chunk upload 50KB parçalar halinde çalışır                  ║
+║  • Cache süresi 6 saattir                                      ║
+╚════════════════════════════════════════════════════════════════╝
 */
