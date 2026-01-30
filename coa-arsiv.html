@@ -737,54 +737,35 @@
                 showToast('📤 Kaydediliyor...', 'info');
                 
                 let fileUrl = '';
-                let driveFileId = '';
+                let compressedData = '';
                 
-                // Dosya varsa Google Drive'a yükle
+                // Dosya varsa işle
                 if (record.fileData && record.fileName) {
-                    console.log('Dosya Drive\'a yükleniyor...', record.fileName);
-                    showToast('☁️ Dosya Google Drive\'a yükleniyor...', 'info');
+                    console.log('Dosya işleniyor...', record.fileName);
+                    showToast('📦 Dosya sıkıştırılıyor...', 'info');
                     
                     try {
-                        // Önce sıkıştır (iyi kalite - 100KB)
-                        const compressedData = await compressForSheets(record.fileData, 100);
+                        // Sıkıştır (iyi kalite - 150KB)
+                        compressedData = await compressForSheets(record.fileData, 150);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        // Drive'a yükle
-                        const uploadParams = new URLSearchParams();
-                        uploadParams.append('action', 'uploadFile');
-                        uploadParams.append('fileData', compressedData);
-                        uploadParams.append('fileName', record.fileName);
-                        uploadParams.append('mimeType', record.fileType || 'image/jpeg');
+                        // LocalStorage için sakla
+                        record.fileData = compressedData;
                         
-                        // URL çok uzunsa chunk upload kullan
-                        if (compressedData.length > 30000) {
-                            // Chunk upload
-                            showToast('📤 Büyük dosya - parça parça yükleniyor...', 'info');
-                            const uploadResult = await uploadToDriveChunked(compressedData, record.fileName, record.fileType);
-                            
-                            if (uploadResult && uploadResult.success) {
-                                fileUrl = uploadResult.viewUrl || uploadResult.directUrl;
-                                driveFileId = uploadResult.fileId;
-                                record.fileData = compressedData; // LocalStorage için
-                                showToast('✅ Dosya Drive\'a yüklendi!', 'success');
-                            }
+                        // imgBB'ye yükle (her cihazdan erişilebilir)
+                        showToast('☁️ Online\'a yükleniyor...', 'info');
+                        const uploadResult = await uploadToImgBB(compressedData);
+                        
+                        if (uploadResult && uploadResult.success && uploadResult.url) {
+                            fileUrl = uploadResult.url;
+                            console.log('imgBB URL:', fileUrl);
+                            showToast('✅ Dosya online\'a yüklendi!', 'success');
                         } else {
-                            // Küçük dosya - direkt yükle
-                            const uploadUrl = googleScriptUrl + '?' + uploadParams.toString();
-                            const uploadResult = await jsonp(uploadUrl);
-                            
-                            if (uploadResult && uploadResult.success) {
-                                fileUrl = uploadResult.viewUrl || uploadResult.directUrl;
-                                driveFileId = uploadResult.fileId;
-                                record.fileData = compressedData;
-                                showToast('✅ Dosya Drive\'a yüklendi!', 'success');
-                            } else {
-                                console.error('Drive yükleme hatası:', uploadResult?.error);
-                                showToast('⚠️ Dosya yüklenemedi: ' + (uploadResult?.error || 'Bilinmeyen hata'), 'warning');
-                            }
+                            console.warn('imgBB yüklenemedi, sadece yerel kayıt');
+                            showToast('⚠️ Online yükleme başarısız, yerel kayıt', 'warning');
                         }
                     } catch (uploadErr) {
-                        console.error('Drive yükleme hatası:', uploadErr);
+                        console.error('Yükleme hatası:', uploadErr);
                         showToast('⚠️ Dosya yüklenemedi', 'warning');
                     }
                 }
@@ -799,15 +780,14 @@
                     notes: record.notes || '',
                     fileName: record.fileName || '',
                     fileType: record.fileType || '',
-                    fileUrl: fileUrl,
-                    driveFileId: driveFileId,
+                    fileUrl: fileUrl, // imgBB URL'si
+                    driveFileId: '',
                     fileData: '', // Sheets'e base64 koymuyoruz
                     createdAt: record.createdAt || new Date().toISOString()
                 };
                 
-                // Record'a da URL'leri kaydet
+                // Record'a URL'yi kaydet
                 record.fileUrl = fileUrl;
-                record.driveFileId = driveFileId;
                 
                 // JSONP ile kayıt gönder
                 const params = new URLSearchParams();
@@ -824,7 +804,7 @@
                     throw new Error(result?.error || 'Kayıt oluşturulamadı');
                 }
                 
-                showToast('✅ Kayıt ve dosya başarıyla eklendi!', 'success');
+                showToast('✅ Kayıt başarıyla eklendi!', 'success');
                 return true;
                 
             } catch (error) {
@@ -1103,7 +1083,7 @@
         }
         
         // Sheets için özel sıkıştırma (max 15KB hedef - URL limiti için)
-        async function compressForSheets(dataUrl, maxSizeKB = 100) {
+        async function compressForSheets(dataUrl, maxSizeKB = 150) {
             return new Promise((resolve, reject) => {
                 // PDF ise thumbnail olarak dönüştür
                 if (dataUrl.includes('application/pdf')) {
