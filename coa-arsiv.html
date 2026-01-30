@@ -673,7 +673,7 @@
                     <table id="coaTable">
                         <thead>
                             <tr>
-                                <th style="width: 40px;">Seç</th>
+                                <th style="width: 40px;"><input type="checkbox" id="headerCheckbox" onchange="toggleSelectAll()" style="cursor: pointer;"></th>
                                 <th>Dosya</th>
                                 <th>Tedarikçi</th>
                                 <th>Hammadde Kodu</th>
@@ -2137,6 +2137,7 @@
             const count = selectedItems.size;
             const deleteBtn = document.getElementById('deleteSelectedBtn');
             const countSpan = document.getElementById('selectedCount');
+            const headerCheckbox = document.getElementById('headerCheckbox');
             
             countSpan.textContent = count;
             
@@ -2144,6 +2145,13 @@
                 deleteBtn.style.display = 'inline-block';
             } else {
                 deleteBtn.style.display = 'none';
+            }
+            
+            // Header checkbox durumu
+            if (headerCheckbox) {
+                const filtered = getFilteredData();
+                const allSelected = filtered.length > 0 && filtered.every(c => selectedItems.has(c.id));
+                headerCheckbox.checked = allSelected;
             }
         }
         
