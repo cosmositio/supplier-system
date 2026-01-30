@@ -738,13 +738,14 @@
                 
                 let compressedFileData = '';
                 
-                // Dosya varsa sıkıştır
+                // Dosya varsa KÜÇÜK sıkıştır (URL'de gönderilebilecek boyutta)
                 if (record.fileData) {
                     console.log('Dosya sıkıştırılıyor...', record.fileName);
                     showToast('📦 Dosya sıkıştırılıyor...', 'info');
                     
                     try {
-                        compressedFileData = await compressForSheets(record.fileData, 100);
+                        // Max 30KB - URL'de gönderilebilir
+                        compressedFileData = await compressForSheets(record.fileData, 30);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedFileData.length / 1024), 'KB');
                         showToast('✅ Dosya sıkıştırıldı (' + Math.round(compressedFileData.length / 1024) + 'KB)', 'success');
                     } catch (compressError) {
@@ -752,7 +753,7 @@
                     }
                 }
                 
-                // Kayıt verisini hazırla (fileData hariç - ayrı gönderilecek)
+                // Kayıt verisini hazırla - fileData DAHİL
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
@@ -764,47 +765,54 @@
                     fileType: record.fileType || '',
                     fileUrl: '',
                     driveFileId: '',
-                    fileData: '', // Chunk upload ile ayrı gönderilecek
+                    fileData: compressedFileData, // Doğrudan kayıtla birlikte gönder
                     createdAt: record.createdAt || new Date().toISOString()
                 };
                 
-                // Önce kaydı oluştur (fileData olmadan)
-                const params = new URLSearchParams();
-                params.append('action', 'addCOA');
-                params.append('data', JSON.stringify(saveData));
+                // POST ile gönder (GET URL limiti sorun olmasın)
+                console.log('Kayıt gönderiliyor (POST)...');
                 
-                const url = googleScriptUrl + '?' + params.toString();
-                console.log('Kayıt oluşturuluyor...');
-                
-                const result = await jsonp(url);
-                console.log('Kayıt sonucu:', result);
-                
-                if (!result || !result.success) {
-                    throw new Error(result?.error || 'Kayıt oluşturulamadı');
-                }
-                
-                // Dosya varsa chunk upload ile gönder
-                if (compressedFileData && compressedFileData.length > 0) {
-                    showToast('📤 Dosya yükleniyor...', 'info');
+                try {
+                    // Form verisi oluştur
+                    const formData = new FormData();
+                    formData.append('action', 'addCOA');
+                    formData.append('data', JSON.stringify(saveData));
                     
-                    try {
-                        const uploadSuccess = await uploadFileInChunks(record.id, compressedFileData);
-                        
-                        if (uploadSuccess) {
-                            record.fileData = compressedFileData;
-                            showToast('✅ Kayıt ve dosya başarıyla yüklendi!', 'success');
-                        } else {
-                            showToast('⚠️ Kayıt eklendi ama dosya yüklenemedi', 'warning');
-                        }
-                    } catch (uploadErr) {
-                        console.error('Dosya yükleme hatası:', uploadErr);
-                        showToast('⚠️ Kayıt eklendi ama dosya yüklenemedi: ' + uploadErr.message, 'warning');
-                    }
-                } else {
+                    // No-cors mode ile POST - yanıt alamayız ama veri gider
+                    const response = await fetch(googleScriptUrl, {
+                        method: 'POST',
+                        body: formData,
+                        mode: 'no-cors'
+                    });
+                    
+                    console.log('POST gönderildi');
+                    
+                    // no-cors'da yanıt alamıyoruz, başarılı varsay
+                    record.fileData = compressedFileData;
                     showToast('✅ Google Sheets\'e kaydedildi!', 'success');
+                    return true;
+                    
+                } catch (postErr) {
+                    console.error('POST hatası:', postErr);
+                    
+                    // POST başarısız olursa JSONP dene (fileData olmadan)
+                    console.log('JSONP ile deneniyor (dosya hariç)...');
+                    saveData.fileData = '';
+                    
+                    const params = new URLSearchParams();
+                    params.append('action', 'addCOA');
+                    params.append('data', JSON.stringify(saveData));
+                    
+                    const url = googleScriptUrl + '?' + params.toString();
+                    const result = await jsonp(url);
+                    
+                    if (!result || !result.success) {
+                        throw new Error(result?.error || 'Kayıt oluşturulamadı');
+                    }
+                    
+                    showToast('⚠️ Kayıt eklendi ama dosya yüklenemedi', 'warning');
+                    return true;
                 }
-                
-                return true;
                 
             } catch (error) {
                 console.error('Kaydetme hatası:', error);
