@@ -702,64 +702,134 @@
         
         async function saveToGoogleSheets(record) {
             try {
-                // Dosya boyutu kontrolü (max 500KB base64 = ~375KB dosya)
-                const MAX_SIZE = 500 * 1024; // 500KB
-                const fileSize = record.fileData.length;
+                // Dosya boyutunu kontrol et - max 50KB (URL limiti için)
+                const MAX_URL_SIZE = 50 * 1024;
                 
-                if (fileSize > MAX_SIZE) {
-                    showToast('⚠️ Dosya çok büyük (' + Math.round(fileSize/1024) + 'KB). Max 500KB desteklenir.', 'warning');
-                    showToast('💡 Dosyayı küçültün veya sıkıştırın.', 'info');
+                if (record.fileData && record.fileData.length > MAX_URL_SIZE) {
+                    showToast('⚠️ Dosya hala büyük, daha fazla sıkıştırılıyor...', 'info');
                     
-                    // Sadece meta veriyi kaydet, dosya olmadan
-                    const metaOnly = {
-                        id: record.id,
-                        supplier: record.supplier,
-                        materialCode: record.materialCode,
-                        deliveryDate: record.deliveryDate,
-                        lotNumber: record.lotNumber,
-                        notes: record.notes + ' [DOSYA ÇOK BÜYÜK - MANUEL YÜKLE]',
-                        fileName: record.fileName,
-                        fileType: record.fileType,
-                        fileUrl: '',
-                        driveFileId: '',
-                        createdAt: record.createdAt
-                    };
-                    
-                    const params = new URLSearchParams();
-                    params.append('action', 'addCOA');
-                    params.append('data', JSON.stringify(metaOnly));
-                    
-                    await jsonp(googleScriptUrl + '?' + params.toString());
-                    return true;
+                    // Daha fazla sıkıştır
+                    const extraCompressed = await compressDataUrl(record.fileData, 40);
+                    if (extraCompressed.length < MAX_URL_SIZE) {
+                        record.fileData = extraCompressed;
+                        showToast('✅ Ek sıkıştırma: ' + Math.round(extraCompressed.length/1024) + 'KB', 'success');
+                    } else {
+                        // Hala büyükse sadece metadata kaydet
+                        showToast('⚠️ Dosya çok büyük, sadece bilgiler kaydediliyor', 'warning');
+                        
+                        const metaOnly = {
+                            id: record.id,
+                            supplier: record.supplier,
+                            materialCode: record.materialCode,
+                            deliveryDate: record.deliveryDate,
+                            lotNumber: record.lotNumber,
+                            notes: record.notes,
+                            fileName: record.fileName,
+                            fileType: record.fileType,
+                            fileUrl: '',
+                            driveFileId: '',
+                            createdAt: record.createdAt
+                        };
+                        
+                        const params = new URLSearchParams();
+                        params.append('action', 'addCOA');
+                        params.append('data', JSON.stringify(metaOnly));
+                        
+                        await jsonp(googleScriptUrl + '?' + params.toString());
+                        showToast('✅ Kayıt bilgileri kaydedildi (dosya hariç)', 'success');
+                        return true;
+                    }
                 }
                 
-                showToast('📤 Dosya Google Drive\'a yükleniyor...', 'info');
+                showToast('📤 Google Sheets\'e kaydediliyor...', 'info');
                 
-                // Dosyayı parçalara böl ve Drive'a yükle
-                const uploadResult = await uploadFileToDrive(
-                    record.fileData,
-                    record.fileName,
-                    record.fileType,
-                    record
-                );
+                // Dosya ile birlikte kaydet
+                const saveData = {
+                    id: record.id,
+                    supplier: record.supplier,
+                    materialCode: record.materialCode,
+                    deliveryDate: record.deliveryDate,
+                    lotNumber: record.lotNumber,
+                    notes: record.notes,
+                    fileName: record.fileName,
+                    fileType: 'image/jpeg',
+                    fileData: record.fileData,
+                    createdAt: record.createdAt
+                };
                 
-                if (uploadResult && uploadResult.success) {
-                    console.log('Google Drive yükleme başarılı:', uploadResult.viewUrl);
-                    record.fileUrl = uploadResult.viewUrl;
-                    record.driveFileId = uploadResult.fileId;
-                    delete record.fileData;
-                    showToast('✅ Google Drive\'a yüklendi!', 'success');
+                const params = new URLSearchParams();
+                params.append('action', 'addCOA');
+                params.append('data', JSON.stringify(saveData));
+                
+                const result = await jsonp(googleScriptUrl + '?' + params.toString());
+                
+                if (result && result.success) {
+                    showToast('✅ Google Sheets\'e kaydedildi!', 'success');
                     return true;
                 } else {
-                    console.error('Yükleme hatası:', uploadResult?.error);
-                    showToast('❌ Yükleme hatası: ' + (uploadResult?.error || 'Bilinmeyen'), 'error');
-                    return false;
+                    throw new Error(result?.error || 'Bilinmeyen hata');
                 }
+                
             } catch (error) {
                 console.error('Kayıt hatası:', error);
                 showToast('❌ Hata: ' + error.message, 'error');
                 return false;
             }
+        }
+        
+        // Data URL'i daha fazla sıkıştır
+        async function compressDataUrl(dataUrl, maxSizeKB) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    let width = img.width;
+                    let height = img.height;
+                    const maxSize = maxSizeKB * 1024;
+                    
+                    // Boyutu küçült
+                    const maxDim = 800;
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round(height * maxDim / width);
+                            width = maxDim;
+                        } else {
+                            width = Math.round(width * maxDim / height);
+                            height = maxDim;
+                        }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    let quality = 0.5;
+                    let result = canvas.toDataURL('image/jpeg', quality);
+                    
+                    while (result.length > maxSize && quality > 0.1) {
+                        quality -= 0.1;
+                        result = canvas.toDataURL('image/jpeg', quality);
+                    }
+                    
+                    // Hala büyükse daha da küçült
+                    if (result.length > maxSize) {
+                        const scale = Math.sqrt(maxSize / result.length) * 0.8;
+                        canvas.width = Math.round(width * scale);
+                        canvas.height = Math.round(height * scale);
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        result = canvas.toDataURL('image/jpeg', 0.4);
+                    }
+                    
+                    resolve(result);
+                };
+                img.src = dataUrl;
+            });
         }
         
         // Dosyayı parçalara böl ve Drive'a yükle

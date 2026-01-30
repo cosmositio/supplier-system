@@ -275,7 +275,7 @@ function getSheet() {
   
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
-    const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'createdAt'];
+    const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileData', 'fileUrl', 'driveFileId', 'createdAt'];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
