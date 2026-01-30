@@ -744,8 +744,8 @@
                     showToast('📦 Dosya sıkıştırılıyor...', 'info');
                     
                     try {
-                        // 40KB hedef - Sheets'e sığar, okunaklı
-                        const compressedData = await compressForSheets(record.fileData, 40);
+                        // 10KB hedef - URL'de gönderilebilir
+                        const compressedData = await compressForSheets(record.fileData, 10);
                         console.log('Sheets için boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
                         fileDataForSheets = compressedData;
@@ -781,8 +781,8 @@
                 console.log('URL uzunluğu:', url.length);
                 
                 // URL çok uzunsa fileData'yı çıkar ve uyar
-                if (url.length > 8000) {
-                    console.warn('URL çok uzun, fileData hariç gönderiliyor');
+                if (url.length > 15000) {
+                    console.warn('URL çok uzun (' + url.length + '), fileData hariç gönderiliyor');
                     saveData.fileData = '';
                     const params2 = new URLSearchParams();
                     params2.append('action', 'addCOA');
@@ -1084,7 +1084,7 @@
         }
         
         // Sheets için özel sıkıştırma (max 15KB hedef - URL limiti için)
-        async function compressForSheets(dataUrl, maxSizeKB = 40) {
+        async function compressForSheets(dataUrl, maxSizeKB = 10) {
             return new Promise((resolve, reject) => {
                 // PDF ise thumbnail olarak dönüştür
                 if (dataUrl.includes('application/pdf')) {
