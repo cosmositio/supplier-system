@@ -551,7 +551,7 @@
         // ==================== Global Variables ====================
         let coaData = [];
         let suppliers = [];
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbyKc3x6789fi6mgzMoDeSHocIVnTGd13owZsF8Wg0pVqU_w9VCl-ABkwYo_i7y15QxJ/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbx_DnVpUJcjHfP6K_lWHKmABI18_aVAi-xGi4cqfaSQNWO95qvdf5KPQz4MzTL7XJHrjQ/exec';
         let selectedFile = null;
         let selectedFileData = null;
         
@@ -572,14 +572,14 @@
             loadSuppliers();
             
             // Doğru URL - localStorage'daki eski URL'yi güncelle
-            const correctUrl = 'https://script.google.com/macros/s/AKfycbyKc3x6789fi6mgzMoDeSHocIVnTGd13owZsF8Wg0pVqU_w9VCl-ABkwYo_i7y15QxJ/exec';
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbx_DnVpUJcjHfP6K_lWHKmABI18_aVAi-xGi4cqfaSQNWO95qvdf5KPQz4MzTL7XJHrjQ/exec';
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
                 
                 // Eski veya yanlış URL ise güncelle
-                if (!savedUrl || !savedUrl.includes('AKfycbyKc3x6789fi6mgzMoDeSHocIVnTGd13owZsF8Wg0pVqU_w9VCl-ABkwYo_i7y15QxJ')) {
+                if (!savedUrl || !savedUrl.includes('AKfycbx_DnVpUJcjHfP6K_lWHKmABI18_aVAi-xGi4cqfaSQNWO95qvdf5KPQz4MzTL7XJHrjQ')) {
                     savedUrl = correctUrl;
                     localStorage.setItem('google_script_url', correctUrl);
                     console.log('URL güncellendi:', correctUrl);

@@ -951,10 +951,18 @@ function appendFileData(id, chunk, chunkIndex, totalChunks) {
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
-    const fileDataCol = headers.indexOf('fileData');
+    
+    // fileData sütununu bul (büyük/küçük harf duyarsız)
+    let fileDataCol = -1;
+    for (let i = 0; i < headers.length; i++) {
+      if (headers[i] && headers[i].toString().toLowerCase() === 'filedata') {
+        fileDataCol = i;
+        break;
+      }
+    }
     
     if (fileDataCol < 0) {
-      return { success: false, error: 'fileData sütunu bulunamadı' };
+      return { success: false, error: 'fileData sütunu bulunamadı. Mevcut sütunlar: ' + headers.join(', ') };
     }
     
     // Kaydı bul
