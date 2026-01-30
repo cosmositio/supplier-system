@@ -555,6 +555,10 @@
                 <div class="label">Bu Ay</div>
             </div>
             <div class="stat-card">
+                <div class="number" id="statTotalSize">0 MB</div>
+                <div class="label">Toplam Dosya</div>
+            </div>
+            <div class="stat-card">
                 <div class="connection-status">
                     <span class="status-dot" id="statusDot"></span>
                     <span id="statusText">Bağlantı kontrol ediliyor...</span>
@@ -2049,6 +2053,20 @@
             const thisMonth = new Date().toISOString().slice(0, 7);
             const thisMonthCount = coaData.filter(c => c.deliveryDate?.startsWith(thisMonth)).length;
             document.getElementById('statThisMonth').textContent = thisMonthCount;
+            
+            // Toplam dosya boyutunu hesapla
+            let totalBytes = 0;
+            coaData.forEach(c => {
+                if (c.fileData) {
+                    // Base64 boyutunu gerçek boyuta çevir (base64 %33 daha büyük)
+                    const base64Length = c.fileData.length;
+                    const realSize = Math.ceil(base64Length * 0.75);
+                    totalBytes += realSize;
+                }
+            });
+            
+            const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
+            document.getElementById('statTotalSize').textContent = totalMB + ' MB';
         }
         
         function renderTable() {
