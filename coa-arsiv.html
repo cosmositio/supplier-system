@@ -749,20 +749,19 @@
                         const compressedData = await compressForSheets(record.fileData, 100);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        // JSON POST ile Drive'a gönder
-                        const uploadPayload = {
-                            action: 'uploadFile',
-                            fileData: compressedData,
-                            fileName: record.fileName,
-                            mimeType: record.fileType || 'image/jpeg'
-                        };
+                        // Form-encoded POST (CORS preflight yok!)
+                        const formData = new URLSearchParams();
+                        formData.append('action', 'uploadFile');
+                        formData.append('fileData', compressedData);
+                        formData.append('fileName', record.fileName);
+                        formData.append('mimeType', record.fileType || 'image/jpeg');
                         
                         const uploadResponse = await fetch(googleScriptUrl, {
                             method: 'POST',
                             headers: {
-                                'Content-Type': 'application/json'
+                                'Content-Type': 'application/x-www-form-urlencoded'
                             },
-                            body: JSON.stringify(uploadPayload)
+                            body: formData.toString()
                         });
                         
                         const uploadResult = await uploadResponse.json();
