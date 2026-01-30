@@ -71,7 +71,31 @@ function processPost(e) {
   let result;
   
   try {
-    const postData = e.postData ? JSON.parse(e.postData.contents) : {};
+    let postData = {};
+    
+    // Form data veya JSON data olabilir
+    if (e.postData) {
+      const contentType = e.postData.type;
+      if (contentType && contentType.includes('application/x-www-form-urlencoded')) {
+        // Form data - parse et
+        const formData = e.postData.contents;
+        const params = formData.split('&');
+        for (const param of params) {
+          const [key, value] = param.split('=');
+          if (key === 'data') {
+            postData = JSON.parse(decodeURIComponent(value));
+          }
+        }
+      } else {
+        // JSON data
+        postData = JSON.parse(e.postData.contents);
+      }
+    }
+    
+    // Parameter'dan da data gelebilir
+    if (e.parameter.data && Object.keys(postData).length === 0) {
+      postData = JSON.parse(e.parameter.data);
+    }
     
     switch(action) {
       case 'addCOA':
@@ -84,10 +108,10 @@ function processPost(e) {
         result = deleteCOA(e.parameter.id);
         break;
       default:
-        result = { success: false, error: 'Geçersiz POST action' };
+        result = { success: false, error: 'Geçersiz POST action: ' + action };
     }
   } catch(error) {
-    result = { success: false, error: error.toString() };
+    result = { success: false, error: error.toString(), details: e.postData ? e.postData.type : 'no postData' };
   }
   
   return ContentService
