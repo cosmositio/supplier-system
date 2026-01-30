@@ -701,25 +701,7 @@
         }
         
         async function saveToGoogleSheets(record) {
-            let fileUrl = '';
-            
-            // Dosya varsa yüklemeyi dene (başarısız olsa da devam et)
-            if (record.fileData) {
-                showToast('📤 Dosya yükleniyor...', 'info');
-                try {
-                    const uploadResult = await uploadToImgBB(record.fileData);
-                    if (uploadResult.success) {
-                        fileUrl = uploadResult.url;
-                        showToast('✅ Dosya yüklendi!', 'success');
-                    } else {
-                        console.warn('Dosya yükleme başarısız:', uploadResult.error);
-                    }
-                } catch (e) {
-                    console.warn('Dosya yükleme hatası:', e);
-                }
-            }
-            
-            // Sheets'e kaydet (dosya yüklenemese bile)
+            // Sheets'e kaydet (dosya yükleme şimdilik devre dışı - CORS sorunu)
             try {
                 showToast('📤 Google Sheets\'e kaydediliyor...', 'info');
                 
@@ -733,7 +715,7 @@
                     fileName: record.fileName,
                     fileType: record.fileType || 'image/jpeg',
                     fileData: '', 
-                    fileUrl: fileUrl,
+                    fileUrl: '', // Dosya yükleme CORS nedeniyle devre dışı
                     driveFileId: '',
                     createdAt: record.createdAt
                 };
