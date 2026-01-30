@@ -205,20 +205,16 @@ function createResponse(result, callback) {
   const output = JSON.stringify(result);
   
   if (callback) {
-    return ContentService
-      .createTextOutput(callback + '(' + output + ')')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT)
-      .setHeader('Access-Control-Allow-Origin', '*')
-      .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-      .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    // JSONP response
+    const response = ContentService.createTextOutput(callback + '(' + output + ')');
+    response.setMimeType(ContentService.MimeType.JAVASCRIPT);
+    return response;
   }
   
-  return ContentService
-    .createTextOutput(output)
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // JSON response
+  const response = ContentService.createTextOutput(output);
+  response.setMimeType(ContentService.MimeType.JSON);
+  return response;
 }
 
 function parseFormData(contents) {
