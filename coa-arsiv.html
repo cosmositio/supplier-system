@@ -701,22 +701,26 @@
         }
         
         async function saveToGoogleSheets(record) {
-            try {
-                let fileUrl = '';
-                
-                // Dosya varsa önce imgBB'ye yükle
-                if (record.fileData) {
-                    showToast('📤 Dosya yükleniyor (imgBB)...', 'info');
-                    const imgbbResult = await uploadToImgBB(record.fileData);
-                    if (imgbbResult.success) {
-                        fileUrl = imgbbResult.url;
-                        showToast('✅ Dosya yüklendi: ' + Math.round(imgbbResult.size/1024) + 'KB', 'success');
+            let fileUrl = '';
+            
+            // Dosya varsa yüklemeyi dene (başarısız olsa da devam et)
+            if (record.fileData) {
+                showToast('📤 Dosya yükleniyor...', 'info');
+                try {
+                    const uploadResult = await uploadToImgBB(record.fileData);
+                    if (uploadResult.success) {
+                        fileUrl = uploadResult.url;
+                        showToast('✅ Dosya yüklendi!', 'success');
                     } else {
-                        console.error('imgBB hatası:', imgbbResult.error);
-                        showToast('⚠️ Dosya yüklenemedi, sadece bilgiler kaydedilecek', 'warning');
+                        console.warn('Dosya yükleme başarısız:', uploadResult.error);
                     }
+                } catch (e) {
+                    console.warn('Dosya yükleme hatası:', e);
                 }
-                
+            }
+            
+            // Sheets'e kaydet (dosya yüklenemese bile)
+            try {
                 showToast('📤 Google Sheets\'e kaydediliyor...', 'info');
                 
                 const saveData = {
@@ -728,7 +732,7 @@
                     notes: record.notes,
                     fileName: record.fileName,
                     fileType: record.fileType || 'image/jpeg',
-                    fileData: '', // Dosya imgBB'de, sadece URL kaydedilir
+                    fileData: '', 
                     fileUrl: fileUrl,
                     driveFileId: '',
                     createdAt: record.createdAt
@@ -739,9 +743,10 @@
                 params.append('data', JSON.stringify(saveData));
                 
                 const url = googleScriptUrl + '?' + params.toString();
-                console.log('İstek URL boyutu:', url.length, 'karakter');
+                console.log('Sheets isteği gönderiliyor, URL boyutu:', url.length);
                 
                 const result = await jsonp(url);
+                console.log('Sheets yanıtı:', result);
                 
                 if (result && result.success) {
                     showToast('✅ Google Sheets\'e kaydedildi!', 'success');
@@ -751,7 +756,7 @@
                 }
                 
             } catch (error) {
-                console.error('Kayıt hatası:', error);
+                console.error('Sheets kayıt hatası:', error);
                 showToast('❌ Sheets hatası: ' + error.message, 'error');
                 return false;
             }
