@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>COA Arşiv - Analiz Sertifikası Yönetimi</title>
     <link rel="icon" type="image/png" href="assets/favicon.png">
+    <!-- PDF.js for PDF compression -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -1002,18 +1004,111 @@
             });
         }
         
+        // PDF'i resme çevirip sıkıştır (pdf.js kullanarak)
+        async function compressPDF(file, maxSizeKB = 400) {
+            return new Promise(async (resolve) => {
+                try {
+                    const maxSize = maxSizeKB * 1024;
+                    
+                    // PDF.js worker ayarla
+                    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                    
+                    // Dosyayı ArrayBuffer olarak oku
+                    const arrayBuffer = await file.arrayBuffer();
+                    
+                    // PDF'i yükle
+                    const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                    const numPages = pdf.numPages;
+                    
+                    console.log('PDF sayfa sayısı: ' + numPages);
+                    showToast('📄 PDF ' + numPages + ' sayfa, dönüştürülüyor...', 'info');
+                    
+                    // Tüm sayfaları tek bir canvas'a çiz
+                    const scale = 1.5; // Kalite için scale
+                    let totalHeight = 0;
+                    let maxWidth = 0;
+                    const pageCanvases = [];
+                    
+                    // Her sayfayı render et
+                    for (let i = 1; i <= numPages; i++) {
+                        const page = await pdf.getPage(i);
+                        const viewport = page.getViewport({ scale: scale });
+                        
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        canvas.width = viewport.width;
+                        canvas.height = viewport.height;
+                        
+                        await page.render({ canvasContext: ctx, viewport: viewport }).promise;
+                        
+                        pageCanvases.push(canvas);
+                        totalHeight += viewport.height;
+                        if (viewport.width > maxWidth) maxWidth = viewport.width;
+                    }
+                    
+                    // Tüm sayfaları birleştir
+                    const finalCanvas = document.createElement('canvas');
+                    finalCanvas.width = maxWidth;
+                    finalCanvas.height = totalHeight;
+                    const finalCtx = finalCanvas.getContext('2d');
+                    finalCtx.fillStyle = 'white';
+                    finalCtx.fillRect(0, 0, maxWidth, totalHeight);
+                    
+                    let yOffset = 0;
+                    for (const canvas of pageCanvases) {
+                        finalCtx.drawImage(canvas, 0, yOffset);
+                        yOffset += canvas.height;
+                    }
+                    
+                    // JPEG olarak sıkıştır
+                    let quality = 0.85;
+                    let result = finalCanvas.toDataURL('image/jpeg', quality);
+                    
+                    while (result.length > maxSize && quality > 0.2) {
+                        quality -= 0.1;
+                        result = finalCanvas.toDataURL('image/jpeg', quality);
+                    }
+                    
+                    // Hala büyükse boyutu küçült
+                    if (result.length > maxSize) {
+                        const scale2 = Math.sqrt(maxSize / result.length) * 0.9;
+                        finalCanvas.width = Math.round(maxWidth * scale2);
+                        finalCanvas.height = Math.round(totalHeight * scale2);
+                        finalCtx.fillStyle = 'white';
+                        finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+                        
+                        yOffset = 0;
+                        for (const canvas of pageCanvases) {
+                            const newHeight = canvas.height * scale2;
+                            finalCtx.drawImage(canvas, 0, yOffset, finalCanvas.width, newHeight);
+                            yOffset += newHeight;
+                        }
+                        result = finalCanvas.toDataURL('image/jpeg', 0.7);
+                    }
+                    
+                    console.log('PDF Sıkıştırma: ' + Math.round(file.size/1024) + 'KB -> ' + Math.round(result.length/1024) + 'KB');
+                    resolve({ 
+                        data: result, 
+                        compressed: true, 
+                        originalSize: file.size, 
+                        newSize: result.length,
+                        convertedToImage: true
+                    });
+                    
+                } catch (error) {
+                    console.error('PDF sıkıştırma hatası:', error);
+                    // Hata olursa orijinal dosyayı döndür
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve({ data: e.target.result, compressed: false, error: error.message });
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+        
         // Resmi sıkıştır (max 500KB)
         async function compressImage(file, maxSizeKB = 400) {
             return new Promise((resolve) => {
                 const maxSize = maxSizeKB * 1024;
-                
-                // PDF ise sıkıştırma yapma
-                if (file.type === 'application/pdf') {
-                    const reader = new FileReader();
-                    reader.onload = (e) => resolve({ data: e.target.result, compressed: false });
-                    reader.readAsDataURL(file);
-                    return;
-                }
                 
                 // Resim değilse direkt oku
                 if (!file.type.startsWith('image/')) {
@@ -1083,8 +1178,28 @@
             const fileSizeKB = Math.round(file.size / 1024);
             showToast('📁 Dosya: ' + file.name + ' (' + fileSizeKB + 'KB)', 'info');
             
-            // 500KB üstü resimleri sıkıştır
-            if (file.type.startsWith('image/') && file.size > 400 * 1024) {
+            // PDF sıkıştırma (400KB üstü)
+            if (file.type === 'application/pdf' && file.size > 400 * 1024) {
+                showToast('🔄 PDF resme dönüştürülüyor ve sıkıştırılıyor...', 'info');
+                
+                const compressed = await compressPDF(file, 400);
+                selectedFileData = compressed.data;
+                
+                // Dosya tipini image/jpeg olarak değiştir
+                selectedFile = new File([selectedFile], file.name.replace('.pdf', '.jpg'), { type: 'image/jpeg' });
+                
+                if (compressed.compressed) {
+                    const newSizeKB = Math.round(compressed.newSize / 1024);
+                    showToast('✅ PDF sıkıştırıldı: ' + fileSizeKB + 'KB -> ' + newSizeKB + 'KB', 'success');
+                    preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' (resme dönüştürüldü)</div>' +
+                        '<img src="' + selectedFileData + '" class="preview-image" style="max-height:300px;">';
+                } else {
+                    showToast('⚠️ PDF dönüştürülemedi: ' + (compressed.error || ''), 'warning');
+                    preview.innerHTML = '<div class="file-name" style="color:orange;">📄 ' + file.name + '</div>';
+                }
+            }
+            // Resim sıkıştırma (400KB üstü)
+            else if (file.type.startsWith('image/') && file.size > 400 * 1024) {
                 showToast('🔄 Resim sıkıştırılıyor...', 'info');
                 const compressed = await compressImage(file, 400);
                 selectedFileData = compressed.data;
@@ -1096,19 +1211,22 @@
                 
                 preview.innerHTML = '<div class="file-name">📷 ' + file.name + ' (sıkıştırılmış)</div>' +
                     '<img src="' + selectedFileData + '" class="preview-image">';
-            } else if (file.type === 'application/pdf' && file.size > 500 * 1024) {
-                // PDF çok büyükse uyar
-                showToast('⚠️ PDF çok büyük (' + fileSizeKB + 'KB). Max 500KB!', 'warning');
-                showToast('💡 PDF\'i online araçlarla küçültün: smallpdf.com', 'info');
+            }
+            // Küçük PDF (400KB altı)
+            else if (file.type === 'application/pdf') {
+                showToast('🔄 PDF resme dönüştürülüyor...', 'info');
                 
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    selectedFileData = e.target.result;
-                    preview.innerHTML = '<div class="file-name" style="color:orange;">📄 ' + file.name + ' (ÇOK BÜYÜK!)</div>';
-                };
-                reader.readAsDataURL(file);
-            } else {
-                // Normal okuma
+                const compressed = await compressPDF(file, 400);
+                selectedFileData = compressed.data;
+                selectedFile = new File([selectedFile], file.name.replace('.pdf', '.jpg'), { type: 'image/jpeg' });
+                
+                const newSizeKB = Math.round(compressed.newSize / 1024);
+                showToast('✅ PDF dönüştürüldü: ' + newSizeKB + 'KB', 'success');
+                preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' (resme dönüştürüldü)</div>' +
+                    '<img src="' + selectedFileData + '" class="preview-image" style="max-height:300px;">';
+            }
+            // Küçük resim veya diğer dosyalar
+            else {
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     selectedFileData = e.target.result;
