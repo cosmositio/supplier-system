@@ -454,7 +454,7 @@
                 <h2>📤 Yeni Sertifika Ekle</h2>
                 
                 <div class="form-group">
-                    <label>Tedarikçi Firma *</label>
+                    <label>Tedarikçi Firma * <span id="supplierCount" style="color:#2196F3; font-weight:normal; font-size:0.9em;"></span></label>
                     <input type="text" id="supplierInput" list="supplierList" placeholder="Tedarikçi adı yazın veya seçin...">
                     <datalist id="supplierList"></datalist>
                     <small style="color:#666; font-size:0.85em;">Ana sayfada Excel yükleyince tedarikçiler otomatik gelir</small>
@@ -1319,6 +1319,7 @@
         function updateSupplierDropdowns() {
             const datalist = document.getElementById('supplierList');
             const filter = document.getElementById('filterSupplier');
+            const countSpan = document.getElementById('supplierCount');
             
             // Clear existing options
             datalist.innerHTML = '';
@@ -1328,6 +1329,17 @@
                 datalist.innerHTML += `<option value="${s}">`;
                 filter.innerHTML += `<option value="${s}">${s}</option>`;
             });
+            
+            // Tedarikçi sayısını göster
+            if (countSpan) {
+                if (suppliers.length === 0) {
+                    countSpan.innerHTML = '(⚠️ Liste boş - Ana sayfada Excel yükleyin)';
+                    countSpan.style.color = '#f44336';
+                } else {
+                    countSpan.innerHTML = `(📊 ${suppliers.length} tedarikçi)`;
+                    countSpan.style.color = '#4CAF50';
+                }
+            }
         }
         
         // ==================== File Upload ====================
