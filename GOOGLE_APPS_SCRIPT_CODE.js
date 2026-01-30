@@ -111,6 +111,17 @@ function doGet(e) {
   return createResponse(result, callback);
 }
 
+// CORS preflight request handler (OPTIONS)
+function doOptions(e) {
+  return ContentService
+    .createTextOutput('')
+    .setMimeType(ContentService.MimeType.JSON)
+    .setHeader('Access-Control-Allow-Origin', '*')
+    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+    .setHeader('Access-Control-Allow-Headers', 'Content-Type')
+    .setHeader('Access-Control-Max-Age', '86400');
+}
+
 function doPost(e) {
   let result;
   let action = '';
@@ -196,7 +207,10 @@ function createResponse(result, callback) {
   if (callback) {
     return ContentService
       .createTextOutput(callback + '(' + output + ')')
-      .setMimeType(ContentService.MimeType.JAVASCRIPT);
+      .setMimeType(ContentService.MimeType.JAVASCRIPT)
+      .setHeader('Access-Control-Allow-Origin', '*')
+      .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
+      .setHeader('Access-Control-Allow-Headers', 'Content-Type');
   }
   
   return ContentService
