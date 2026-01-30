@@ -249,6 +249,111 @@
             min-width: 200px;
         }
         
+        /* Multiselect */
+        .multiselect-container {
+            position: relative;
+            min-width: 250px;
+        }
+        
+        .multiselect-header {
+            padding: 10px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            background: white;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            user-select: none;
+        }
+        
+        .multiselect-header:hover {
+            border-color: #2196F3;
+        }
+        
+        .multiselect-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 2px solid #2196F3;
+            border-radius: 8px;
+            margin-top: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            display: none;
+        }
+        
+        .multiselect-dropdown.active {
+            display: block;
+        }
+        
+        .multiselect-option {
+            padding: 10px 15px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .multiselect-option:hover {
+            background: #f5f5f5;
+        }
+        
+        .multiselect-option input[type="checkbox"] {
+            cursor: pointer;
+            width: 18px;
+            height: 18px;
+        }
+        
+        .multiselect-search {
+            padding: 10px;
+            border-bottom: 1px solid #e0e0e0;
+            position: sticky;
+            top: 0;
+            background: white;
+        }
+        
+        .multiselect-search input {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+        
+        .multiselect-actions {
+            padding: 10px;
+            border-top: 1px solid #e0e0e0;
+            display: flex;
+            gap: 10px;
+            position: sticky;
+            bottom: 0;
+            background: white;
+        }
+        
+        .multiselect-actions button {
+            flex: 1;
+            padding: 8px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85em;
+        }
+        
+        .multiselect-actions .select-all {
+            background: #4CAF50;
+            color: white;
+        }
+        
+        .multiselect-actions .clear-all {
+            background: #f44336;
+            color: white;
+        }
+        
         /* Table */
         .table-container {
             overflow-x: auto;
@@ -506,9 +611,24 @@
                 
                 <div class="filters">
                     <input type="text" id="searchInput" placeholder="🔍 Ara (tedarikçi, hammadde, lot no...)">
-                    <select id="filterSupplier">
-                        <option value="">Tüm Tedarikçiler</option>
-                    </select>
+                    
+                    <div class="multiselect-container">
+                        <div class="multiselect-header" id="supplierMultiselectHeader">
+                            <span id="supplierMultiselectText">Tüm Tedarikçiler</span>
+                            <span>▼</span>
+                        </div>
+                        <div class="multiselect-dropdown" id="supplierMultiselectDropdown">
+                            <div class="multiselect-search">
+                                <input type="text" id="supplierSearchInput" placeholder="Tedarikçi ara...">
+                            </div>
+                            <div id="supplierMultiselectOptions"></div>
+                            <div class="multiselect-actions">
+                                <button class="select-all" onclick="selectAllSuppliers()">✓ Tümünü Seç</button>
+                                <button class="clear-all" onclick="clearAllSuppliers()">✗ Temizle</button>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <input type="month" id="filterMonth">
                 </div>
                 
@@ -551,6 +671,7 @@
         // ==================== Global Variables ====================
         let coaData = [];
         let suppliers = [];
+        let selectedSuppliers = new Set(); // Seçili tedarikçiler
         let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbz-jIyt9-U3s1FyiaPj2c4sWlETknLreyM3XXHYFIfSoLY-A3BmtAl7-Opdntwg1eOH/exec';
         let selectedFile = null;
         let selectedFileData = null;
@@ -565,8 +686,10 @@
             
             // Init filters
             document.getElementById('searchInput').addEventListener('input', filterList);
-            document.getElementById('filterSupplier').addEventListener('change', filterList);
             document.getElementById('filterMonth').addEventListener('change', filterList);
+            
+            // Init multiselect
+            initSupplierMultiselect();
             
             // Load suppliers from localStorage (from index.html)
             loadSuppliers();
@@ -1356,6 +1479,111 @@
             }
         }
         
+        // ==================== Multiselect ====================
+        function initSupplierMultiselect() {
+            const header = document.getElementById('supplierMultiselectHeader');
+            const dropdown = document.getElementById('supplierMultiselectDropdown');
+            const searchInput = document.getElementById('supplierSearchInput');
+            
+            // Toggle dropdown
+            header.addEventListener('click', (e) => {
+                e.stopPropagation();
+                dropdown.classList.toggle('active');
+            });
+            
+            // Close dropdown when clicking outside
+            document.addEventListener('click', (e) => {
+                if (!e.target.closest('.multiselect-container')) {
+                    dropdown.classList.remove('active');
+                }
+            });
+            
+            // Search suppliers
+            searchInput.addEventListener('input', (e) => {
+                e.stopPropagation();
+                const search = e.target.value.toLowerCase();
+                const options = document.querySelectorAll('.multiselect-option');
+                options.forEach(opt => {
+                    const text = opt.textContent.toLowerCase();
+                    opt.style.display = text.includes(search) ? 'flex' : 'none';
+                });
+            });
+        }
+        
+        function updateSupplierDropdowns() {
+            const datalist = document.getElementById('supplierList');
+            const optionsContainer = document.getElementById('supplierMultiselectOptions');
+            const countSpan = document.getElementById('supplierCount');
+            
+            // Clear existing options
+            datalist.innerHTML = '';
+            optionsContainer.innerHTML = '';
+            
+            suppliers.forEach(s => {
+                // Datalist için (form input)
+                datalist.innerHTML += `<option value="${s}">`;
+                
+                // Multiselect için
+                const isChecked = selectedSuppliers.has(s);
+                const option = document.createElement('div');
+                option.className = 'multiselect-option';
+                option.innerHTML = `
+                    <input type="checkbox" id="supplier_${s.replace(/\s+/g, '_')}" 
+                           ${isChecked ? 'checked' : ''} 
+                           onchange="toggleSupplier('${s.replace(/'/g, "\\'")}')">
+                    <label for="supplier_${s.replace(/\s+/g, '_')}">${s}</label>
+                `;
+                optionsContainer.appendChild(option);
+            });
+            
+            updateSupplierMultiselectText();
+            
+            // Tedarikçi sayısını göster
+            if (countSpan) {
+                if (suppliers.length === 0) {
+                    countSpan.innerHTML = '(⚠️ Liste boş - Ana sayfada Excel yükleyin)';
+                    countSpan.style.color = '#f44336';
+                } else {
+                    countSpan.innerHTML = `(📊 ${suppliers.length} tedarikçi)`;
+                    countSpan.style.color = '#4CAF50';
+                }
+            }
+        }
+        
+        function toggleSupplier(supplier) {
+            if (selectedSuppliers.has(supplier)) {
+                selectedSuppliers.delete(supplier);
+            } else {
+                selectedSuppliers.add(supplier);
+            }
+            updateSupplierMultiselectText();
+            filterList();
+        }
+        
+        function selectAllSuppliers() {
+            selectedSuppliers.clear();
+            suppliers.forEach(s => selectedSuppliers.add(s));
+            updateSupplierDropdowns();
+            filterList();
+        }
+        
+        function clearAllSuppliers() {
+            selectedSuppliers.clear();
+            updateSupplierDropdowns();
+            filterList();
+        }
+        
+        function updateSupplierMultiselectText() {
+            const text = document.getElementById('supplierMultiselectText');
+            if (selectedSuppliers.size === 0) {
+                text.textContent = 'Tüm Tedarikçiler';
+            } else if (selectedSuppliers.size === 1) {
+                text.textContent = Array.from(selectedSuppliers)[0];
+            } else {
+                text.textContent = `${selectedSuppliers.size} tedarikçi seçili`;
+            }
+        }
+        
         // ==================== File Upload ====================
         function initUploadArea() {
             const uploadArea = document.getElementById('uploadArea');
@@ -1840,7 +2068,6 @@
         
         function getFilteredData() {
             const search = document.getElementById('searchInput').value.toLowerCase();
-            const supplier = document.getElementById('filterSupplier').value;
             const month = document.getElementById('filterMonth').value;
             
             return coaData.filter(c => {
@@ -1849,7 +2076,8 @@
                     String(c.materialCode || '').toLowerCase().includes(search) ||
                     String(c.lotNumber || '').toLowerCase().includes(search);
                     
-                const matchSupplier = !supplier || c.supplier === supplier;
+                // Çoklu tedarikçi filtresi: Hiç seçilmemişse tümünü göster, seçilmişse sadece seçilenleri göster
+                const matchSupplier = selectedSuppliers.size === 0 || selectedSuppliers.has(c.supplier);
                 const matchMonth = !month || String(c.deliveryDate || '').startsWith(month);
                 
                 return matchSearch && matchSupplier && matchMonth;
