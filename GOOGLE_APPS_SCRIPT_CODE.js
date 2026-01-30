@@ -3,28 +3,19 @@
 // Bu kodu Google Apps Script'e yapıştırın
 // ==========================================
 
-// Sheet adı - Türkçe karakterler ve boşluk destekli
-// Eğer farklı bir isim kullanıyorsanız buradan değiştirin
+// Sheet adı
 const SHEET_NAME = 'COA_Arsiv';
-
-// Alternatif sheet isimleri (bunlardan biri varsa onu kullanır)
 const ALTERNATIVE_NAMES = ['COA Arşiv', 'COA_Arsiv', 'COA Arsiv', 'Sayfa1', 'Sheet1'];
 
-// CORS için header'lar
+// Drive klasör ID - boş bırakın otomatik oluşturulsun
+let DRIVE_FOLDER_ID = '';
+
+// Geçici veri deposu (chunk'lar için)
+const CHUNK_CACHE = {};
+
+// ==================== Ana Fonksiyonlar ====================
+
 function doGet(e) {
-  return handleCORS(e, processGet);
-}
-
-function doPost(e) {
-  return handleCORS(e, processPost);
-}
-
-function handleCORS(e, handler) {
-  const response = handler(e);
-  return response;
-}
-
-function processGet(e) {
   const action = e.parameter.action;
   const callback = e.parameter.callback;
   let result;
@@ -41,24 +32,25 @@ function processGet(e) {
         result = getCOA(e.parameter.id);
         break;
       case 'addCOA':
-        // GET ile de ekleme yapabilmek için (JSONP desteği)
         const data = e.parameter.data ? JSON.parse(e.parameter.data) : null;
         result = data ? addCOA(data) : { success: false, error: 'Veri eksik' };
         break;
       case 'deleteCOA':
         result = deleteCOA(e.parameter.id);
         break;
-      case 'getStats':
-        result = getStats();
+      case 'uploadChunk':
+        result = uploadChunk(e.parameter);
+        break;
+      case 'finalizeUpload':
+        result = finalizeUpload(e.parameter);
         break;
       default:
         result = { success: false, error: 'Geçersiz action: ' + action };
     }
   } catch(error) {
-    result = { success: false, error: error.toString(), stack: error.stack };
+    result = { success: false, error: error.toString() };
   }
   
-  // JSONP callback desteği
   if (callback) {
     return ContentService
       .createTextOutput(callback + '(' + JSON.stringify(result) + ')')
@@ -70,52 +62,51 @@ function processGet(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
-function processPost(e) {
-  const action = e.parameter.action;
+function doPost(e) {
   let result;
-  
   try {
+    const action = e.parameter.action;
     let postData = {};
     
-    // Form data veya JSON data olabilir
     if (e.postData) {
-      const contentType = e.postData.type;
-      if (contentType && contentType.includes('application/x-www-form-urlencoded')) {
-        // Form data - parse et
+      try {
+        postData = JSON.parse(e.postData.contents);
+      } catch(err) {
+        // Form data olabilir
         const formData = e.postData.contents;
         const params = formData.split('&');
         for (const param of params) {
-          const [key, value] = param.split('=');
-          if (key === 'data') {
-            postData = JSON.parse(decodeURIComponent(value));
+          const idx = param.indexOf('=');
+          if (idx > 0) {
+            const key = param.substring(0, idx);
+            const value = decodeURIComponent(param.substring(idx + 1));
+            if (key === 'data') {
+              postData = JSON.parse(value);
+            } else if (key === 'chunk') {
+              postData.chunk = value;
+            } else {
+              postData[key] = value;
+            }
           }
         }
-      } else {
-        // JSON data
-        postData = JSON.parse(e.postData.contents);
       }
-    }
-    
-    // Parameter'dan da data gelebilir
-    if (e.parameter.data && Object.keys(postData).length === 0) {
-      postData = JSON.parse(e.parameter.data);
     }
     
     switch(action) {
       case 'addCOA':
         result = addCOA(postData);
         break;
-      case 'updateCOA':
-        result = updateCOA(e.parameter.id, postData);
+      case 'uploadChunk':
+        result = uploadChunk(postData);
         break;
-      case 'deleteCOA':
-        result = deleteCOA(e.parameter.id);
+      case 'finalizeUpload':
+        result = finalizeUpload(postData);
         break;
       default:
-        result = { success: false, error: 'Geçersiz POST action: ' + action };
+        result = { success: false, error: 'Geçersiz action' };
     }
   } catch(error) {
-    result = { success: false, error: error.toString(), details: e.postData ? e.postData.type : 'no postData' };
+    result = { success: false, error: error.toString() };
   }
   
   return ContentService
@@ -123,40 +114,168 @@ function processPost(e) {
     .setMimeType(ContentService.MimeType.JSON);
 }
 
+// ==================== Drive İşlemleri ====================
+
+function getDriveFolder() {
+  let folder;
+  
+  // Mevcut klasörü bul
+  const folders = DriveApp.getFoldersByName('COA_Sertifikalar');
+  if (folders.hasNext()) {
+    folder = folders.next();
+  } else {
+    // Klasör yoksa oluştur
+    folder = DriveApp.createFolder('COA_Sertifikalar');
+    // Herkese açık yap (görüntüleme)
+    folder.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  }
+  
+  return folder;
+}
+
+function uploadFileToDrive(base64Data, fileName, mimeType) {
+  try {
+    const folder = getDriveFolder();
+    
+    // Base64'ten blob oluştur
+    const base64Content = base64Data.split(',')[1] || base64Data;
+    const blob = Utilities.newBlob(Utilities.base64Decode(base64Content), mimeType, fileName);
+    
+    // Dosyayı Drive'a kaydet
+    const file = folder.createFile(blob);
+    
+    // Herkese açık yap
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    
+    // Görüntüleme linkini al
+    const fileId = file.getId();
+    const viewUrl = 'https://drive.google.com/file/d/' + fileId + '/view';
+    const directUrl = 'https://drive.google.com/uc?id=' + fileId;
+    
+    return {
+      success: true,
+      fileId: fileId,
+      viewUrl: viewUrl,
+      directUrl: directUrl,
+      fileName: fileName
+    };
+  } catch(error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+// ==================== Chunk Upload İşlemleri ====================
+
+function uploadChunk(params) {
+  const uploadId = params.uploadId;
+  const chunkIndex = parseInt(params.chunkIndex);
+  const totalChunks = parseInt(params.totalChunks);
+  const chunk = params.chunk;
+  
+  if (!uploadId || chunkIndex === undefined || !chunk) {
+    return { success: false, error: 'Eksik parametreler' };
+  }
+  
+  // Cache'i al veya oluştur
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'upload_' + uploadId;
+  
+  // Mevcut chunk'ları al
+  let chunks = {};
+  const cached = cache.get(cacheKey);
+  if (cached) {
+    chunks = JSON.parse(cached);
+  }
+  
+  // Yeni chunk'ı ekle
+  chunks[chunkIndex] = chunk;
+  chunks.totalChunks = totalChunks;
+  
+  // Cache'e kaydet (6 saat geçerli)
+  cache.put(cacheKey, JSON.stringify(chunks), 21600);
+  
+  const receivedCount = Object.keys(chunks).filter(k => k !== 'totalChunks').length;
+  
+  return {
+    success: true,
+    uploadId: uploadId,
+    chunkIndex: chunkIndex,
+    received: receivedCount,
+    total: totalChunks
+  };
+}
+
+function finalizeUpload(params) {
+  const uploadId = params.uploadId;
+  const fileName = params.fileName;
+  const mimeType = params.mimeType;
+  const recordData = params.recordData ? JSON.parse(params.recordData) : null;
+  
+  if (!uploadId || !fileName) {
+    return { success: false, error: 'Eksik parametreler' };
+  }
+  
+  const cache = CacheService.getScriptCache();
+  const cacheKey = 'upload_' + uploadId;
+  const cached = cache.get(cacheKey);
+  
+  if (!cached) {
+    return { success: false, error: 'Upload bulunamadı veya süre doldu' };
+  }
+  
+  const chunks = JSON.parse(cached);
+  const totalChunks = chunks.totalChunks;
+  
+  // Tüm chunk'ları birleştir
+  let fullBase64 = '';
+  for (let i = 0; i < totalChunks; i++) {
+    if (!chunks[i]) {
+      return { success: false, error: 'Eksik chunk: ' + i };
+    }
+    fullBase64 += chunks[i];
+  }
+  
+  // Drive'a yükle
+  const uploadResult = uploadFileToDrive(fullBase64, fileName, mimeType);
+  
+  if (!uploadResult.success) {
+    return uploadResult;
+  }
+  
+  // Cache'i temizle
+  cache.remove(cacheKey);
+  
+  // Eğer kayıt verisi varsa, Sheets'e de ekle
+  if (recordData) {
+    recordData.fileUrl = uploadResult.viewUrl;
+    recordData.driveFileId = uploadResult.fileId;
+    addCOA(recordData);
+  }
+  
+  return {
+    success: true,
+    fileId: uploadResult.fileId,
+    viewUrl: uploadResult.viewUrl,
+    directUrl: uploadResult.directUrl
+  };
+}
+
 // ==================== Sheet İşlemleri ====================
 
 function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
-  // Önce tercih edilen ismi dene
   let sheet = ss.getSheetByName(SHEET_NAME);
   
-  // Bulunamazsa alternatif isimleri dene
   if (!sheet) {
     for (const name of ALTERNATIVE_NAMES) {
       sheet = ss.getSheetByName(name);
-      if (sheet) {
-        console.log('Alternatif sheet bulundu: ' + name);
-        break;
-      }
+      if (sheet) break;
     }
   }
   
-  // Hala yoksa yeni oluştur
   if (!sheet) {
-    console.log('Yeni sheet oluşturuluyor: ' + SHEET_NAME);
     sheet = ss.insertSheet(SHEET_NAME);
-    // Başlıkları ekle
-    const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileData', 'createdAt'];
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
-    sheet.setFrozenRows(1);
-  }
-  
-  // Başlık kontrolü - eğer başlıklar yoksa ekle
-  const firstRow = sheet.getRange(1, 1, 1, 10).getValues()[0];
-  if (!firstRow[0] || firstRow[0] !== 'id') {
-    const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileData', 'createdAt'];
+    const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'createdAt'];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
