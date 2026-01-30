@@ -623,7 +623,10 @@
                     <input type="text" id="notes" placeholder="Ek bilgi...">
                 </div>
                 
-                <button class="btn btn-primary" onclick="saveCOA()">💾 Kaydet</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary" id="saveBtn" onclick="saveCOA()" style="flex: 1;">💾 Kaydet</button>
+                    <button class="btn btn-secondary" id="cancelEditBtn" onclick="cancelEdit()" style="display: none;">❌ İptal</button>
+                </div>
                 
                 <!-- Settings -->
                 <div class="settings-section">
@@ -704,6 +707,8 @@
         let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbwsoqlAro7UaRkgWwNGqa9M8JDV3kOcAUU6TX5cqrsxDMXAkABUsxWmNCS3VMX1iQsUFQ/exec';
         let selectedFile = null;
         let selectedFileData = null;
+        let editMode = false;
+        let editingId = null;
         
         // ==================== Initialization ====================
         document.addEventListener('DOMContentLoaded', function() {
@@ -1417,6 +1422,43 @@
             }
         }
         
+        async function updateToGoogleSheets(record) {
+            try {
+                const params = new URLSearchParams();
+                params.append('action', 'updateCOA');
+                params.append('id', record.id);
+                
+                // Form-encoded POST için data'yı encode et
+                const formData = new URLSearchParams();
+                formData.append('action', 'updateCOA');
+                formData.append('id', record.id);
+                formData.append('data', JSON.stringify(record));
+                
+                const response = await fetch(googleScriptUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData.toString()
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    console.log('Google Sheets güncellendi:', record.id);
+                    return true;
+                } else {
+                    console.error('Güncelleme hatası:', result.error);
+                    showToast('⚠️ Google Sheets güncellenemedi: ' + result.error, 'error');
+                    return false;
+                }
+            } catch (error) {
+                console.error('updateToGoogleSheets hatası:', error);
+                showToast('⚠️ Google Sheets bağlantı hatası', 'error');
+                return false;
+            }
+        }
+        
         // ==================== Local Storage ====================
         function loadFromLocalStorage() {
             const saved = localStorage.getItem('coa_arsiv_data');
@@ -1888,7 +1930,7 @@
             const materialCode = document.getElementById('materialCode').value.trim();
             const deliveryDate = document.getElementById('deliveryDate').value;
             const lotNumber = document.getElementById('lotNumber').value.trim();
-            const location = document.getElementById('location').value.trim();
+            const location = document.getElementById('location').value;
             const notes = document.getElementById('notes').value.trim();
             
             // Validation
@@ -1904,6 +1946,59 @@
                 showToast('❌ İrsaliye tarihi girin!', 'error');
                 return;
             }
+            
+            // Edit mode - dosya opsiyonel
+            if (editMode) {
+                const existingRecord = coaData.find(c => c.id === editingId);
+                if (!existingRecord) {
+                    showToast('❌ Kayıt bulunamadı!', 'error');
+                    return;
+                }
+                
+                // Dosya değiştirilmediyse mevcut dosyayı kullan
+                const record = {
+                    id: editingId,
+                    supplier: supplier,
+                    materialCode: materialCode,
+                    deliveryDate: deliveryDate,
+                    lotNumber: lotNumber,
+                    location: location,
+                    notes: notes,
+                    fileName: selectedFileData ? selectedFile.name : existingRecord.fileName,
+                    fileType: selectedFileData ? selectedFile.type : existingRecord.fileType,
+                    fileData: selectedFileData || existingRecord.fileData,
+                    fileUrl: existingRecord.fileUrl || '',
+                    driveFileId: existingRecord.driveFileId || '',
+                    createdAt: existingRecord.createdAt,
+                    updatedAt: new Date().toISOString()
+                };
+                
+                // Google Sheets'e güncelle
+                if (googleScriptUrl) {
+                    const result = await updateToGoogleSheets(record);
+                    if (result) {
+                        const idx = coaData.findIndex(c => c.id === editingId);
+                        if (idx >= 0) {
+                            coaData[idx] = record;
+                        }
+                        saveToLocalStorage();
+                        showToast('✅ COA güncellendi!', 'success');
+                    }
+                } else {
+                    const idx = coaData.findIndex(c => c.id === editingId);
+                    if (idx >= 0) {
+                        coaData[idx] = record;
+                    }
+                    saveToLocalStorage();
+                    showToast('✅ Yerel olarak güncellendi!', 'success');
+                }
+                
+                cancelEdit();
+                updateUI();
+                return;
+            }
+            
+            // Yeni kayıt - dosya zorunlu
             if (!selectedFileData) {
                 showToast('❌ Sertifika dosyası yükleyin!', 'error');
                 return;
@@ -1957,6 +2052,52 @@
             document.getElementById('uploadArea').classList.remove('has-file');
             selectedFile = null;
             selectedFileData = null;
+            editMode = false;
+            editingId = null;
+            document.getElementById('saveBtn').textContent = '💾 Kaydet';
+            document.getElementById('cancelEditBtn').style.display = 'none';
+        }
+        
+        function editCOA(id) {
+            const record = coaData.find(c => c.id === id);
+            if (!record) {
+                showToast('❌ Kayıt bulunamadı!', 'error');
+                return;
+            }
+            
+            // Forma verileri doldur
+            document.getElementById('supplierInput').value = record.supplier || '';
+            document.getElementById('materialCode').value = record.materialCode || '';
+            document.getElementById('deliveryDate').value = record.deliveryDate || '';
+            document.getElementById('lotNumber').value = record.lotNumber || '';
+            document.getElementById('location').value = record.location || '';
+            document.getElementById('notes').value = record.notes || '';
+            
+            // Mevcut dosya önizlemesi
+            if (record.fileData) {
+                const preview = document.getElementById('filePreview');
+                if (record.fileType?.startsWith('image/')) {
+                    preview.innerHTML = '<img src="' + record.fileData + '" style="max-width: 100%; max-height: 200px; border-radius: 8px;"><p style="margin-top: 10px; color: #666;">Mevcut dosya: ' + record.fileName + '</p><p style="font-size: 0.9em; color: #999;">Yeni dosya yüklerseniz değiştirilir</p>';
+                } else {
+                    preview.innerHTML = '<div class="pdf-icon">PDF</div><p style="margin-top: 10px; color: #666;">Mevcut dosya: ' + record.fileName + '</p><p style="font-size: 0.9em; color: #999;">Yeni dosya yüklerseniz değiştirilir</p>';
+                }
+                document.getElementById('uploadArea').classList.add('has-file');
+            }
+            
+            // Edit mode'a geç
+            editMode = true;
+            editingId = id;
+            document.getElementById('saveBtn').textContent = '✏️ Güncelle';
+            document.getElementById('cancelEditBtn').style.display = 'block';
+            
+            // Forma scroll
+            document.querySelector('.card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            showToast('📝 Düzenleme modu aktif', 'info');
+        }
+        
+        function cancelEdit() {
+            clearForm();
+            showToast('❌ Düzenleme iptal edildi', 'info');
         }
         
         async function deleteCOA(id) {
