@@ -571,6 +571,13 @@
             // Load suppliers from localStorage (from index.html)
             loadSuppliers();
             
+            // İlk yüklemede localStorage'dan yükle (hızlı başlangıç)
+            loadFromLocalStorage();
+            if (coaData.length > 0) {
+                renderTable();
+                updateStats();
+            }
+            
             // Doğru URL - localStorage'daki eski URL'yi güncelle
             const correctUrl = 'https://script.google.com/macros/s/AKfycbz-jIyt9-U3s1FyiaPj2c4sWlETknLreyM3XXHYFIfSoLY-A3BmtAl7-Opdntwg1eOH/exec';
             
@@ -718,16 +725,22 @@
                     // Yerel yedek olarak da kaydet
                     saveToLocalStorage();
                     
+                    // Tabloyu güncelle
+                    renderTable();
+                    updateUI();
+                    
                     showToast('✅ ' + coaData.length + ' kayıt yüklendi (' + withFiles + ' dosyalı)', 'success');
                 } else {
                     console.error('Veri yükleme hatası:', data?.error);
                     loadFromLocalStorage();
+                    renderTable();
                     showToast('⚠️ Sheets hatası, yerel veriler kullanılıyor', 'warning');
                 }
             } catch (error) {
                 console.error('Yükleme hatası:', error);
                 // Yerel veriden yükle
                 loadFromLocalStorage();
+                renderTable();
                 showToast('⚠️ Çevrimdışı mod - yerel veriler kullanılıyor', 'warning');
             }
         }
@@ -1255,6 +1268,7 @@
             const saved = localStorage.getItem('coa_arsiv_data');
             if (saved) {
                 coaData = JSON.parse(saved);
+                console.log('localStorage\'dan yüklendi:', coaData.length, 'kayıt');
             }
         }
         
