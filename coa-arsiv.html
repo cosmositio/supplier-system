@@ -1002,27 +1002,126 @@
             });
         }
         
-        function handleFile(file) {
+        // Resmi sıkıştır (max 500KB)
+        async function compressImage(file, maxSizeKB = 400) {
+            return new Promise((resolve) => {
+                const maxSize = maxSizeKB * 1024;
+                
+                // PDF ise sıkıştırma yapma
+                if (file.type === 'application/pdf') {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve({ data: e.target.result, compressed: false });
+                    reader.readAsDataURL(file);
+                    return;
+                }
+                
+                // Resim değilse direkt oku
+                if (!file.type.startsWith('image/')) {
+                    const reader = new FileReader();
+                    reader.onload = (e) => resolve({ data: e.target.result, compressed: false });
+                    reader.readAsDataURL(file);
+                    return;
+                }
+                
+                const img = new Image();
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                
+                img.onload = () => {
+                    let width = img.width;
+                    let height = img.height;
+                    
+                    // Max boyut 1920px
+                    const maxDim = 1920;
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round(height * maxDim / width);
+                            width = maxDim;
+                        } else {
+                            width = Math.round(width * maxDim / height);
+                            height = maxDim;
+                        }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // Kaliteyi düşürerek sıkıştır
+                    let quality = 0.9;
+                    let result = canvas.toDataURL('image/jpeg', quality);
+                    
+                    while (result.length > maxSize && quality > 0.1) {
+                        quality -= 0.1;
+                        result = canvas.toDataURL('image/jpeg', quality);
+                    }
+                    
+                    // Hala büyükse boyutu küçült
+                    if (result.length > maxSize) {
+                        const scale = Math.sqrt(maxSize / result.length);
+                        canvas.width = Math.round(width * scale);
+                        canvas.height = Math.round(height * scale);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        result = canvas.toDataURL('image/jpeg', 0.8);
+                    }
+                    
+                    console.log('Sıkıştırma: ' + Math.round(file.size/1024) + 'KB -> ' + Math.round(result.length/1024) + 'KB');
+                    resolve({ data: result, compressed: true, originalSize: file.size, newSize: result.length });
+                };
+                
+                img.src = URL.createObjectURL(file);
+            });
+        }
+        
+        async function handleFile(file) {
             selectedFile = file;
             const uploadArea = document.getElementById('uploadArea');
             const preview = document.getElementById('filePreview');
             
             uploadArea.classList.add('has-file');
             
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                selectedFileData = e.target.result;
+            const fileSizeKB = Math.round(file.size / 1024);
+            showToast('📁 Dosya: ' + file.name + ' (' + fileSizeKB + 'KB)', 'info');
+            
+            // 500KB üstü resimleri sıkıştır
+            if (file.type.startsWith('image/') && file.size > 400 * 1024) {
+                showToast('🔄 Resim sıkıştırılıyor...', 'info');
+                const compressed = await compressImage(file, 400);
+                selectedFileData = compressed.data;
                 
-                if (file.type.startsWith('image/')) {
-                    preview.innerHTML = `
-                        <div class="file-name">📷 ${file.name}</div>
-                        <img src="${e.target.result}" class="preview-image">
-                    `;
-                } else {
-                    preview.innerHTML = `<div class="file-name">📄 ${file.name}</div>`;
+                if (compressed.compressed) {
+                    const newSizeKB = Math.round(compressed.newSize / 1024);
+                    showToast('✅ Sıkıştırıldı: ' + fileSizeKB + 'KB -> ' + newSizeKB + 'KB', 'success');
                 }
-            };
-            reader.readAsDataURL(file);
+                
+                preview.innerHTML = '<div class="file-name">📷 ' + file.name + ' (sıkıştırılmış)</div>' +
+                    '<img src="' + selectedFileData + '" class="preview-image">';
+            } else if (file.type === 'application/pdf' && file.size > 500 * 1024) {
+                // PDF çok büyükse uyar
+                showToast('⚠️ PDF çok büyük (' + fileSizeKB + 'KB). Max 500KB!', 'warning');
+                showToast('💡 PDF\'i online araçlarla küçültün: smallpdf.com', 'info');
+                
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    selectedFileData = e.target.result;
+                    preview.innerHTML = '<div class="file-name" style="color:orange;">📄 ' + file.name + ' (ÇOK BÜYÜK!)</div>';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                // Normal okuma
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    selectedFileData = e.target.result;
+                    
+                    if (file.type.startsWith('image/')) {
+                        preview.innerHTML = '<div class="file-name">📷 ' + file.name + '</div>' +
+                            '<img src="' + e.target.result + '" class="preview-image">';
+                    } else {
+                        preview.innerHTML = '<div class="file-name">📄 ' + file.name + '</div>';
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
         }
         
         // ==================== CRUD Operations ====================
