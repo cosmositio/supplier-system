@@ -1845,12 +1845,12 @@
             
             return coaData.filter(c => {
                 const matchSearch = !search || 
-                    c.supplier?.toLowerCase().includes(search) ||
-                    c.materialCode?.toLowerCase().includes(search) ||
-                    c.lotNumber?.toLowerCase().includes(search);
+                    String(c.supplier || '').toLowerCase().includes(search) ||
+                    String(c.materialCode || '').toLowerCase().includes(search) ||
+                    String(c.lotNumber || '').toLowerCase().includes(search);
                     
                 const matchSupplier = !supplier || c.supplier === supplier;
-                const matchMonth = !month || c.deliveryDate?.startsWith(month);
+                const matchMonth = !month || String(c.deliveryDate || '').startsWith(month);
                 
                 return matchSearch && matchSupplier && matchMonth;
             });
