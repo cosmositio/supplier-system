@@ -1004,7 +1004,7 @@
         
         // Dosyayı Google Drive'a chunk'lar halinde yükle
         async function uploadToDriveChunked(fileData, fileName, mimeType) {
-            const CHUNK_SIZE = 3000; // 3KB per chunk (URL limit için güvenli boyut)
+            const CHUNK_SIZE = 5000; // 5KB per chunk (URL-safe ve hızlı)
             const chunks = [];
             
             // Dosyayı parçala
@@ -1012,7 +1012,7 @@
                 chunks.push(fileData.substring(i, i + CHUNK_SIZE));
             }
             
-            console.log('Drive upload - Toplam chunk sayısı:', chunks.length, '(her biri ~10KB)');
+            console.log('Drive upload - Toplam chunk sayısı:', chunks.length, '(her biri ~5KB)');
             
             try {
                 // 1. Upload başlat
@@ -1036,7 +1036,10 @@
                 
                 // 2. Chunk'ları gönder
                 for (let i = 0; i < chunks.length; i++) {
-                    showToast('📤 Drive\'a yükleniyor... ' + Math.round((i + 1) / chunks.length * 100) + '%', 'info');
+                    // Her 10 chunk'ta bir progress göster
+                    if (i % 10 === 0 || i === chunks.length - 1) {
+                        showToast('📤 Drive\'a yükleniyor... ' + Math.round((i + 1) / chunks.length * 100) + '%', 'info');
+                    }
                     
                     const chunkUrl = googleScriptUrl + 
                         '?action=uploadChunk' +
@@ -1044,8 +1047,6 @@
                         '&chunkIndex=' + i +
                         '&totalChunks=' + chunks.length +
                         '&chunk=' + encodeURIComponent(chunks[i]);
-                    
-                    console.log('Chunk', i, 'URL uzunluğu:', chunkUrl.length);
                     
                     // Retry mekanizması
                     let chunkResult = null;
@@ -1062,7 +1063,7 @@
                             console.log('Chunk', i, 'retry', retryCount + 1);
                         }
                         retryCount++;
-                        await new Promise(r => setTimeout(r, 1000)); // 1 sn bekle
+                        await new Promise(r => setTimeout(r, 500)); // 500ms bekle
                     }
                     
                     if (!chunkResult || !chunkResult.success) {
@@ -1071,11 +1072,14 @@
                         return { success: false, error: 'Chunk ' + i + ' hatası: ' + errorMsg };
                     }
                     
-                    console.log('Chunk gönderildi:', i + 1, '/', chunks.length);
+                    // Her 20 chunk'ta bir log
+                    if (i % 20 === 0 || i === chunks.length - 1) {
+                        console.log('Chunk gönderildi:', i + 1, '/', chunks.length);
+                    }
                     
-                    // Rate limiting - daha uzun bekle
+                    // Rate limiting - daha kısa bekle (200ms)
                     if (i < chunks.length - 1) {
-                        await new Promise(r => setTimeout(r, 500));
+                        await new Promise(r => setTimeout(r, 200));
                     }
                 }
                 
@@ -1966,14 +1970,40 @@
                 // Yeni dosya yüklendiyse Drive'a upload et
                 let uploadResult = null;
                 if (selectedFileData) {
-                    showToast('🔄 Yeni dosya Drive\'a yükleniyor...', 'info');
-                    uploadResult = await uploadToDriveChunked(selectedFileData, selectedFile.name, selectedFile.type);
+                    showToast('☁️ Yeni dosya Drive\'a yükleniyor...', 'info');
                     
-                    if (!uploadResult || !uploadResult.success) {
-                        showToast('❌ Dosya yüklenemedi!', 'error');
+                    try {
+                        // İlk kayıttaki gibi sıkıştır ve POST ile gönder
+                        const compressedData = await compressForSheets(selectedFileData, 250);
+                        console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
+                        
+                        const formData = new URLSearchParams();
+                        formData.append('action', 'uploadFile');
+                        formData.append('fileData', compressedData);
+                        formData.append('fileName', selectedFile.name);
+                        formData.append('mimeType', selectedFile.type || 'image/jpeg');
+                        
+                        const uploadResponse = await fetch(googleScriptUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/x-www-form-urlencoded'
+                            },
+                            body: formData.toString()
+                        });
+                        
+                        uploadResult = await uploadResponse.json();
+                        console.log('Drive upload sonucu:', uploadResult);
+                        
+                        if (!uploadResult || !uploadResult.success) {
+                            showToast('❌ Dosya yüklenemedi: ' + (uploadResult?.error || 'Bilinmeyen hata'), 'error');
+                            return;
+                        }
+                        showToast('✅ Dosya Drive\'a yüklendi!', 'success');
+                    } catch (uploadErr) {
+                        console.error('Drive upload hatası:', uploadErr);
+                        showToast('❌ Dosya yükleme hatası: ' + uploadErr.message, 'error');
                         return;
                     }
-                    showToast('✅ Dosya Drive\'a yüklendi!', 'success');
                 }
                 
                 // Record oluştur - yeni dosya varsa onun bilgilerini kullan, yoksa eski dosyayı koru
