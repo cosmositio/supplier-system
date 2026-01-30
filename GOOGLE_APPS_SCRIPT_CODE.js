@@ -111,6 +111,7 @@ function doGet(e) {
 function doPost(e) {
   let result;
   let action = '';
+  let callback = e.parameter.callback || '';
   
   try {
     action = e.parameter.action || '';
@@ -130,6 +131,20 @@ function doPost(e) {
     // Parameter'lardan da action alınabilir
     if (!action && postData.action) {
       action = postData.action;
+    }
+    
+    // Callback postData'dan da gelebilir
+    if (!callback && postData.callback) {
+      callback = postData.callback;
+    }
+    
+    // Data field'ı parse et
+    if (postData.data && typeof postData.data === 'string') {
+      try {
+        postData = JSON.parse(postData.data);
+      } catch(parseErr) {
+        // Parse edilemezse olduğu gibi bırak
+      }
     }
     
     switch(action) {
@@ -167,7 +182,7 @@ function doPost(e) {
     logError('doPost', error, action);
   }
   
-  return createResponse(result, e.parameter.callback);
+  return createResponse(result, callback);
 }
 
 // ==================== Yardımcı Fonksiyonlar ====================
@@ -728,7 +743,7 @@ function getSheet() {
   }
   
   // Header kontrolü - sheet boşsa veya header yoksa ekle
-  const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'createdAt', 'updatedAt'];
+  const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'fileData', 'createdAt', 'updatedAt'];
   
   // İlk hücreyi kontrol et
   const firstCell = sheet.getRange(1, 1).getValue();
@@ -783,10 +798,8 @@ function getAllCOA() {
       if (data[i][0]) { // id varsa
         const record = {};
         for (let j = 0; j < headers.length; j++) {
-          // fileData sütununu atla (çok büyük olabilir)
-          if (headers[j] !== 'fileData') {
-            record[headers[j]] = data[i][j];
-          }
+          // fileData dahil tüm alanları al
+          record[headers[j]] = data[i][j];
         }
         records.push(record);
       }
@@ -815,9 +828,8 @@ function getCOA(id) {
       if (data[i][0] == id) {
         const record = {};
         for (let j = 0; j < headers.length; j++) {
-          if (headers[j] !== 'fileData') {
-            record[headers[j]] = data[i][j];
-          }
+          // fileData dahil tüm alanları al
+          record[headers[j]] = data[i][j];
         }
         return { success: true, data: record };
       }
@@ -903,8 +915,8 @@ function addCOA(record) {
     }
     record.updatedAt = now;
     
-    // fileData'yı Sheet'e kaydetme
-    delete record.fileData;
+    // fileData'yı Sheet'e kaydet (sıkıştırılmış halde geldi)
+    // NOT: fileData silinmiyor, Sheets'e kaydediliyor
     
     // Satır verisini oluştur
     const row = headers.map(header => {

@@ -551,7 +551,7 @@
         // ==================== Global Variables ====================
         let coaData = [];
         let suppliers = [];
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbyiIoDA9C1dMI8im4slUmFZNksh9JxI3qWMUt1dpz0U1R_9wdK-tC3H9xjfmZACF9kAWw/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbw5ncrimhE5QY9NigbHtXOj3wz2zVNrm_xwyR_Litvn3gaE8d_mL7pcA4HtHcbx7UZWng/exec';
         let selectedFile = null;
         let selectedFileData = null;
         
@@ -572,14 +572,14 @@
             loadSuppliers();
             
             // Doğru URL - localStorage'daki eski URL'yi güncelle
-            const correctUrl = 'https://script.google.com/macros/s/AKfycbyiIoDA9C1dMI8im4slUmFZNksh9JxI3qWMUt1dpz0U1R_9wdK-tC3H9xjfmZACF9kAWw/exec';
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbw5ncrimhE5QY9NigbHtXOj3wz2zVNrm_xwyR_Litvn3gaE8d_mL7pcA4HtHcbx7UZWng/exec';
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
                 
                 // Eski veya yanlış URL ise güncelle
-                if (!savedUrl || !savedUrl.includes('AKfycbyiIoDA9C1dMI8im4slUmFZNksh9JxI3qWMUt1dpz0U1R_9wdK-tC3H9xjfmZACF9kAWw')) {
+                if (!savedUrl || !savedUrl.includes('AKfycbw5ncrimhE5QY9NigbHtXOj3wz2zVNrm_xwyR_Litvn3gaE8d_mL7pcA4HtHcbx7UZWng')) {
                     savedUrl = correctUrl;
                     localStorage.setItem('google_script_url', correctUrl);
                     console.log('URL güncellendi:', correctUrl);
@@ -690,22 +690,35 @@
                 console.log('Google Sheets\'ten veri yükleniyor...');
                 showToast('🔄 Veriler yükleniyor...', 'info');
                 
-                const data = await jsonp(googleScriptUrl + '?action=getAllCOA');
+                const data = await jsonp(googleScriptUrl + '?action=getAllCOA&includeFileData=true');
                 
                 if (data && data.success) {
-                    // fileData olmadan kayıtları al (Drive URL'leri var)
+                    // Kayıtları al (fileData dahil)
                     coaData = (data.data || []).map(record => {
-                        // fileData'yı kesinlikle dahil etme
-                        const { fileData, ...cleanRecord } = record;
-                        return cleanRecord;
+                        return {
+                            id: record.id,
+                            supplier: record.supplier,
+                            materialCode: record.materialCode,
+                            deliveryDate: record.deliveryDate,
+                            lotNumber: record.lotNumber || '',
+                            notes: record.notes || '',
+                            fileName: record.fileName || '',
+                            fileType: record.fileType || '',
+                            fileUrl: record.fileUrl || '',
+                            fileData: record.fileData || '', // Dosya verisi dahil
+                            createdAt: record.createdAt || '',
+                            updatedAt: record.updatedAt || ''
+                        };
                     });
                     
                     console.log('Yüklenen kayıt sayısı:', coaData.length);
+                    const withFiles = coaData.filter(r => r.fileData).length;
+                    console.log('Dosyalı kayıt sayısı:', withFiles);
                     
                     // Yerel yedek olarak da kaydet
                     saveToLocalStorage();
                     
-                    showToast('✅ ' + coaData.length + ' kayıt yüklendi', 'success');
+                    showToast('✅ ' + coaData.length + ' kayıt yüklendi (' + withFiles + ' dosyalı)', 'success');
                 } else {
                     console.error('Veri yükleme hatası:', data?.error);
                     loadFromLocalStorage();
@@ -723,34 +736,25 @@
             try {
                 showToast('📤 Kaydediliyor...', 'info');
                 
-                // Orijinal fileData'yı sakla (yerel görüntüleme için)
-                const originalFileData = record.fileData;
-                let uploadSuccess = false;
+                let compressedFileData = '';
                 
-                // Dosya varsa yüklemeyi dene
+                // Dosya varsa çok sıkıştır (URL limiti için max 15KB)
                 if (record.fileData) {
-                    console.log('Dosya yükleniyor...', record.fileName);
-                    showToast('📤 Dosya yükleniyor...', 'info');
+                    console.log('Dosya sıkıştırılıyor...', record.fileName);
+                    showToast('📦 Dosya sıkıştırılıyor...', 'info');
                     
                     try {
-                        // imgbb.com API kullan (ücretsiz, CORS destekli)
-                        const uploadResult = await uploadToImgBB(record.fileData);
+                        // Dosyayı max 15KB'a sıkıştır (URL limit için güvenli boyut)
+                        compressedFileData = await compressForSheets(record.fileData, 15);
+                        console.log('Sıkıştırılmış boyut:', Math.round(compressedFileData.length / 1024), 'KB');
                         
-                        console.log('Upload sonucu:', uploadResult);
-                        
-                        if (uploadResult && uploadResult.success && uploadResult.url) {
-                            record.fileUrl = uploadResult.url;
-                            uploadSuccess = true;
-                            showToast('✅ Dosya yüklendi!', 'success');
-                        } else {
-                            console.warn('Upload başarısız, dosya yerel olarak saklanacak');
-                        }
-                    } catch (uploadError) {
-                        console.error('Upload exception:', uploadError);
+                        showToast('✅ Dosya sıkıştırıldı (' + Math.round(compressedFileData.length / 1024) + 'KB)', 'success');
+                    } catch (compressError) {
+                        console.error('Sıkıştırma hatası:', compressError);
                     }
                 }
                 
-                // Kayıt verisini hazırla (Sheets için fileData hariç)
+                // Kayıt verisini hazırla
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
@@ -760,36 +764,33 @@
                     notes: record.notes || '',
                     fileName: record.fileName || '',
                     fileType: record.fileType || '',
-                    fileUrl: record.fileUrl || '',
-                    driveFileId: record.driveFileId || '',
+                    fileUrl: '',
+                    driveFileId: '',
+                    fileData: compressedFileData,
                     createdAt: record.createdAt || new Date().toISOString()
                 };
                 
-                console.log('Sheets\'e kayıt ekleniyor:', saveData);
+                const jsonData = JSON.stringify(saveData);
+                console.log('Sheets\'e kayıt ekleniyor, boyut:', Math.round(jsonData.length / 1024), 'KB');
                 
+                // JSONP ile gönder (küçük dosya boyutu URL'e sığar)
                 const params = new URLSearchParams();
                 params.append('action', 'addCOA');
-                params.append('data', JSON.stringify(saveData));
+                params.append('data', jsonData);
                 
                 const url = googleScriptUrl + '?' + params.toString();
+                console.log('URL boyutu:', url.length, 'karakter');
                 
                 const result = await jsonp(url);
                 console.log('Sheets yanıtı:', result);
                 
                 if (result && result.success) {
-                    // Upload başarısız olduysa fileData'yı geri koy (yerel görüntüleme için)
-                    if (!uploadSuccess && originalFileData) {
-                        record.fileData = originalFileData;
-                        showToast('✅ Kayıt eklendi! (Dosya yerel olarak saklandı)', 'success');
-                    } else {
-                        showToast('✅ Google Sheets\'e kaydedildi!', 'success');
+                    if (compressedFileData) {
+                        record.fileData = compressedFileData;
                     }
+                    showToast('✅ Google Sheets\'e kaydedildi! (Dosya online saklandı)', 'success');
                     return true;
                 } else {
-                    // Sheets'e kayıt başarısız - fileData'yı geri koy
-                    if (originalFileData) {
-                        record.fileData = originalFileData;
-                    }
                     throw new Error(result?.error || 'Bilinmeyen hata');
                 }
                 
@@ -919,6 +920,86 @@
             });
         }
         
+        // Sheets için özel sıkıştırma (max 15KB hedef - URL limiti için)
+        async function compressForSheets(dataUrl, maxSizeKB = 15) {
+            return new Promise((resolve, reject) => {
+                // PDF ise thumbnail olarak dönüştür
+                if (dataUrl.includes('application/pdf')) {
+                    console.warn('PDF dosyası - sadece meta bilgisi kaydedilecek');
+                    // PDF için küçük placeholder
+                    resolve('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iIGZvbnQtc2l6ZT0iMjQiPvCfk4Q8L3RleHQ+PC9zdmc+');
+                    return;
+                }
+                
+                const img = new Image();
+                img.onerror = () => {
+                    console.error('Resim yüklenemedi');
+                    resolve(''); // Hata durumunda boş
+                };
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    
+                    let width = img.width;
+                    let height = img.height;
+                    const maxSize = maxSizeKB * 1024;
+                    
+                    // Başlangıç boyutu 300px (küçük thumbnail)
+                    let maxDim = 300;
+                    if (width > maxDim || height > maxDim) {
+                        if (width > height) {
+                            height = Math.round(height * maxDim / width);
+                            width = maxDim;
+                        } else {
+                            width = Math.round(width * maxDim / height);
+                            height = maxDim;
+                        }
+                    }
+                    
+                    canvas.width = width;
+                    canvas.height = height;
+                    ctx.fillStyle = 'white';
+                    ctx.fillRect(0, 0, width, height);
+                    ctx.drawImage(img, 0, 0, width, height);
+                    
+                    // Düşük kalite
+                    let quality = 0.3;
+                    let result = canvas.toDataURL('image/jpeg', quality);
+                    
+                    // Boyut hala büyükse daha da küçült
+                    while (result.length > maxSize && quality > 0.1) {
+                        quality -= 0.05;
+                        result = canvas.toDataURL('image/jpeg', quality);
+                    }
+                    
+                    // Hala büyükse boyutu daha da küçült
+                    if (result.length > maxSize) {
+                        maxDim = 200;
+                        canvas.width = Math.min(width, maxDim);
+                        canvas.height = Math.round(canvas.width * height / width);
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        result = canvas.toDataURL('image/jpeg', 0.25);
+                    }
+                    
+                    // Son kontrol - kesinlikle 20KB'ı geçmesin
+                    if (result.length > 20000) {
+                        canvas.width = 150;
+                        canvas.height = Math.round(150 * height / width);
+                        ctx.fillStyle = 'white';
+                        ctx.fillRect(0, 0, canvas.width, canvas.height);
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        result = canvas.toDataURL('image/jpeg', 0.2);
+                    }
+                    
+                    console.log('Sıkıştırma sonucu:', Math.round(result.length/1024), 'KB, boyut:', canvas.width, 'x', canvas.height);
+                    resolve(result);
+                };
+                img.src = dataUrl;
+            });
+        }
+        
         // Bekleyen kayıtları senkronize et
         async function syncPendingRecords() {
             if (!googleScriptUrl) return;
@@ -934,47 +1015,34 @@
             
             for (const record of pending) {
                 try {
+                    // Dosyayı sıkıştır ve Sheets'e kaydet
                     if (record.fileData) {
-                        // Dosyası olan kayıtları Catbox'a yükle
-                        const uploadResult = await uploadToImgBB(record.fileData);
-                        
-                        if (uploadResult && uploadResult.success) {
-                            record.fileUrl = uploadResult.url;
-                            delete record.fileData;
-                            delete record.pending;
-                            
-                            // Şimdi Sheets'e kaydet
-                            const params = new URLSearchParams();
-                            params.append('action', 'addCOA');
-                            params.append('data', JSON.stringify(record));
-                            
-                            const result = await jsonp(googleScriptUrl + '?' + params.toString());
-                            if (result && result.success) {
-                                successCount++;
-                            } else {
-                                failCount++;
-                            }
-                        } else {
-                            failCount++;
-                            console.error('Senkronizasyon hatası:', record.id, uploadResult?.error);
-                        }
-                    } else {
-                        // Sadece meta veri olan kayıtları Sheets'e ekle
-                        const params = new URLSearchParams();
-                        params.append('action', 'addCOA');
-                        params.append('data', JSON.stringify(record));
-                        
-                        const result = await jsonp(googleScriptUrl + '?' + params.toString());
-                        if (result && result.success) {
-                            delete record.pending;
-                            successCount++;
-                        } else {
-                            failCount++;
+                        try {
+                            record.fileData = await compressForSheets(record.fileData, 40);
+                        } catch (e) {
+                            console.warn('Sıkıştırma hatası, orijinal kullanılıyor');
                         }
                     }
+                    
+                    delete record.pending;
+                    
+                    // Sheets'e kaydet (fileData dahil)
+                    const params = new URLSearchParams();
+                    params.append('action', 'addCOA');
+                    params.append('data', JSON.stringify(record));
+                    
+                    const result = await jsonp(googleScriptUrl + '?' + params.toString());
+                    if (result && result.success) {
+                        successCount++;
+                    } else {
+                        failCount++;
+                        record.pending = true; // Başarısızsa tekrar beklemede yap
+                    }
+                    
                     console.log('Senkronize edildi:', record.id);
                 } catch (e) {
                     failCount++;
+                    record.pending = true;
                     console.error('Senkronizasyon hatası:', record.id, e);
                 }
             }
@@ -1535,22 +1603,22 @@
             emptyState.style.display = 'none';
             
             tbody.innerHTML = filtered.map(c => {
-                // Dosya önizlemesi - Drive veya yerel
+                // Dosya önizlemesi - önce fileData, sonra URL
                 let filePreview;
-                if (c.fileUrl && c.fileType?.startsWith('image/')) {
+                if (c.fileData && (c.fileType?.startsWith('image/') || c.fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i))) {
+                    filePreview = '<img src="' + c.fileData + '" class="thumbnail" onclick="viewFile(\'' + c.id + '\')">';
+                } else if (c.fileUrl && c.fileType?.startsWith('image/')) {
                     const directUrl = c.fileUrl.replace('/view', '/preview');
                     filePreview = '<img src="' + directUrl + '" class="thumbnail" onclick="viewFile(\'' + c.id + '\')">';
-                } else if (c.fileData && c.fileType?.startsWith('image/')) {
-                    filePreview = '<img src="' + c.fileData + '" class="thumbnail" onclick="viewFile(\'' + c.id + '\')">';
                 } else {
                     filePreview = '<div class="pdf-icon" onclick="viewFile(\'' + c.id + '\')">PDF</div>';
                 }
                 
-                const driveIcon = c.fileUrl ? ' ☁️' : '';
+                const onlineIcon = c.fileData ? ' 💾' : (c.fileUrl ? ' ☁️' : '');
                 
                 return '<tr>' +
                     '<td>' + filePreview + '</td>' +
-                    '<td><strong>' + c.supplier + '</strong>' + driveIcon + '</td>' +
+                    '<td><strong>' + c.supplier + '</strong>' + onlineIcon + '</td>' +
                     '<td>' + c.materialCode + '</td>' +
                     '<td>' + formatDate(c.deliveryDate) + '</td>' +
                     '<td>' + (c.lotNumber || '-') + '</td>' +
