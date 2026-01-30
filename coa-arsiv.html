@@ -1066,8 +1066,9 @@
                     }
                     
                     if (!chunkResult || !chunkResult.success) {
-                        console.error('Chunk hatası:', i, chunkResult?.error);
-                        return { success: false, error: 'Chunk ' + i + ' hatası' };
+                        const errorMsg = chunkResult?.error || 'Bilinmeyen hata';
+                        console.error('Chunk hatası:', i, errorMsg);
+                        return { success: false, error: 'Chunk ' + i + ' hatası: ' + errorMsg };
                     }
                     
                     console.log('Chunk gönderildi:', i + 1, '/', chunks.length);
@@ -1441,33 +1442,27 @@
                     delete recordToSend.fileData;
                 }
                 
-                // Form-encoded POST için data'yı encode et
-                const formData = new URLSearchParams();
-                formData.append('action', 'updateCOA');
-                formData.append('id', record.id);
-                formData.append('data', JSON.stringify(recordToSend));
+                // JSONP ile POST gönder (fetch yerine)
+                const updateUrl = googleScriptUrl + 
+                    '?action=updateCOA' +
+                    '&id=' + encodeURIComponent(record.id) +
+                    '&data=' + encodeURIComponent(JSON.stringify(recordToSend));
                 
-                const response = await fetch(googleScriptUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: formData.toString()
-                });
+                console.log('Update URL oluşturuldu, uzunluk:', updateUrl.length);
                 
-                const result = await response.json();
+                const result = await jsonp(updateUrl);
                 
-                if (result.success) {
+                if (result && result.success) {
                     console.log('Google Sheets güncellendi:', record.id);
                     return true;
                 } else {
-                    console.error('Güncelleme hatası:', result.error);
-                    showToast('⚠️ Google Sheets güncellenemedi: ' + result.error, 'error');
+                    console.error('Güncelleme hatası:', result?.error);
+                    showToast('⚠️ Google Sheets güncellenemedi: ' + (result?.error || 'Bilinmeyen hata'), 'error');
                     return false;
                 }
             } catch (error) {
                 console.error('updateToGoogleSheets hatası:', error);
-                showToast('⚠️ Google Sheets bağlantı hatası', 'error');
+                showToast('⚠️ Google Sheets bağlantı hatası: ' + error.message, 'error');
                 return false;
             }
         }
@@ -2094,7 +2089,9 @@
             // Forma verileri doldur
             document.getElementById('supplierInput').value = record.supplier || '';
             document.getElementById('materialCode').value = record.materialCode || '';
-            document.getElementById('deliveryDate').value = record.deliveryDate || '';
+            // Tarih formatını düzelt (YYYY-MM-DD)
+            const deliveryDate = record.deliveryDate || '';
+            document.getElementById('deliveryDate').value = deliveryDate.split('T')[0];
             document.getElementById('lotNumber').value = record.lotNumber || '';
             document.getElementById('location').value = record.location || '';
             document.getElementById('notes').value = record.notes || '';
