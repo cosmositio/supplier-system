@@ -1168,11 +1168,11 @@
                 if (c.fileUrl && c.fileType?.startsWith('image/')) {
                     // Drive'dan resim - direkt link kullan
                     const directUrl = c.fileUrl.replace('/view', '/preview');
-                    filePreview = `<img src="${directUrl}" class="thumbnail" onclick="viewFile('${c.id}')" onerror="this.outerHTML='<div class=\\'pdf-icon\\' onclick=\\'viewFile(\\'${c.id}\\')\\'>📷</div>'">`;
+                    filePreview = '<img src="' + directUrl + '" class="thumbnail" onclick="viewFile(\'' + c.id + '\')" onerror="this.outerHTML=\'<div class=pdf-icon onclick=viewFile(\\x27' + c.id + '\\x27)>📷</div>\'">';
                 } else if (c.fileData && c.fileType?.startsWith('image/')) {
-                    filePreview = `<img src="${c.fileData}" class="thumbnail" onclick="viewFile('${c.id}')">`;
+                    filePreview = '<img src="' + c.fileData + '" class="thumbnail" onclick="viewFile(\'' + c.id + '\')">';
                 } else {
-                    filePreview = `<div class="pdf-icon" onclick="viewFile('${c.id}')">PDF</div>`;
+                    filePreview = '<div class="pdf-icon" onclick="viewFile(\'' + c.id + '\')">PDF</div>';
                 }
                 
                 // Drive'da ise ikon göster
