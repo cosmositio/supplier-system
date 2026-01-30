@@ -815,7 +815,7 @@
         
         // Dosyayı chunk'lar halinde yükle
         async function uploadFileInChunks(recordId, fileData) {
-            const CHUNK_SIZE = 8000; // Her chunk 8KB (URL limitine sığar)
+            const CHUNK_SIZE = 1500; // 1.5KB - URL encode sonrası ~4KB (güvenli limit)
             const chunks = [];
             
             // Dosyayı parçala
@@ -829,14 +829,15 @@
             for (let i = 0; i < chunks.length; i++) {
                 showToast('📤 Dosya yükleniyor... ' + Math.round((i + 1) / chunks.length * 100) + '%', 'info');
                 
-                const chunkParams = new URLSearchParams();
-                chunkParams.append('action', 'appendFileData');
-                chunkParams.append('id', recordId);
-                chunkParams.append('chunk', chunks[i]);
-                chunkParams.append('chunkIndex', i);
-                chunkParams.append('totalChunks', chunks.length);
+                // URL'yi manuel oluştur (encodeURIComponent ile)
+                const chunkUrl = googleScriptUrl + 
+                    '?action=appendFileData' +
+                    '&id=' + encodeURIComponent(recordId) +
+                    '&chunk=' + encodeURIComponent(chunks[i]) +
+                    '&chunkIndex=' + i +
+                    '&totalChunks=' + chunks.length;
                 
-                const chunkUrl = googleScriptUrl + '?' + chunkParams.toString();
+                console.log('Chunk URL uzunluğu:', chunkUrl.length);
                 
                 try {
                     const chunkResult = await jsonp(chunkUrl);
