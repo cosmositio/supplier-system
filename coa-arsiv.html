@@ -663,10 +663,21 @@
                     <input type="month" id="filterMonth">
                 </div>
                 
+                <div style="display: flex; gap: 10px; margin-bottom: 15px; align-items: center;">
+                    <button class="btn btn-secondary btn-sm" onclick="toggleSelectAll()" id="selectAllBtn">
+                        <input type="checkbox" id="selectAllCheckbox" style="margin-right: 5px; cursor: pointer;" onchange="toggleSelectAll()">
+                        Tümünü Seç
+                    </button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteSelected()" id="deleteSelectedBtn" style="display: none;">
+                        🗑 Seçilenleri Sil (<span id="selectedCount">0</span>)
+                    </button>
+                </div>
+                
                 <div class="table-container">
                     <table id="coaTable">
                         <thead>
                             <tr>
+                                <th style="width: 40px;"><input type="checkbox" id="headerCheckbox" onchange="toggleSelectAll()" style="cursor: pointer;"></th>
                                 <th>Dosya</th>
                                 <th>Tedarikçi</th>
                                 <th>Hammadde Kodu</th>
@@ -709,6 +720,7 @@
         let selectedFileData = null;
         let editMode = false;
         let editingId = null;
+        let selectedItems = new Set();
         
         // ==================== Initialization ====================
         document.addEventListener('DOMContentLoaded', function() {
@@ -2100,6 +2112,79 @@
             showToast('❌ Düzenleme iptal edildi', 'info');
         }
         
+        function toggleRowSelection(id) {
+            if (selectedItems.has(id)) {
+                selectedItems.delete(id);
+            } else {
+                selectedItems.add(id);
+            }
+            updateBulkActions();
+        }
+        
+        function toggleSelectAll() {
+            const filtered = getFilteredData();
+            const headerCheckbox = document.getElementById('headerCheckbox');
+            
+            if (headerCheckbox.checked) {
+                // Tümünü seç
+                filtered.forEach(c => selectedItems.add(c.id));
+            } else {
+                // Tümünü kaldır
+                filtered.forEach(c => selectedItems.delete(c.id));
+            }
+            
+            renderTable();
+            updateBulkActions();
+        }
+        
+        function updateBulkActions() {
+            const count = selectedItems.size;
+            const deleteBtn = document.getElementById('deleteSelectedBtn');
+            const countSpan = document.getElementById('selectedCount');
+            const headerCheckbox = document.getElementById('headerCheckbox');
+            
+            countSpan.textContent = count;
+            
+            if (count > 0) {
+                deleteBtn.style.display = 'inline-block';
+            } else {
+                deleteBtn.style.display = 'none';
+            }
+            
+            // Header checkbox durumu
+            const filtered = getFilteredData();
+            const allSelected = filtered.length > 0 && filtered.every(c => selectedItems.has(c.id));
+            headerCheckbox.checked = allSelected;
+        }
+        
+        async function deleteSelected() {
+            if (selectedItems.size === 0) {
+                showToast('❌ Silinecek kayıt seçin!', 'error');
+                return;
+            }
+            
+            if (!confirm(`${selectedItems.size} adet kaydı silmek istediğinizden emin misiniz?`)) {
+                return;
+            }
+            
+            const idsToDelete = Array.from(selectedItems);
+            let successCount = 0;
+            
+            for (const id of idsToDelete) {
+                if (googleScriptUrl) {
+                    await deleteFromGoogleSheets(id);
+                }
+                
+                coaData = coaData.filter(c => c.id !== id);
+                selectedItems.delete(id);
+                successCount++;
+            }
+            
+            saveToLocalStorage();
+            updateUI();
+            showToast(`✅ ${successCount} kayıt silindi!`, 'success');
+        }
+        
         async function deleteCOA(id) {
             if (!confirm('Bu sertifikayı silmek istediğinizden emin misiniz?')) return;
             
@@ -2183,6 +2268,7 @@
         function updateUI() {
             updateStats();
             renderTable();
+            updateBulkActions();
         }
         
         function updateStats() {
@@ -2227,6 +2313,8 @@
             emptyState.style.display = 'none';
             
             tbody.innerHTML = filtered.map(c => {
+                const isChecked = selectedItems.has(c.id) ? 'checked' : '';
+                
                 // Dosya önizlemesi - önce fileData, sonra URL
                 let filePreview;
                 if (c.fileData && (c.fileType?.startsWith('image/') || c.fileName?.match(/\.(jpg|jpeg|png|gif|webp)$/i))) {
@@ -2241,6 +2329,7 @@
                 const onlineIcon = c.fileData ? ' 💾' : (c.fileUrl ? ' ☁️' : '');
                 
                 return '<tr>' +
+                    '<td><input type="checkbox" class="row-checkbox" data-id="' + c.id + '" onchange="toggleRowSelection(\'' + c.id + '\')" ' + isChecked + ' style="cursor: pointer;"></td>' +
                     '<td>' + filePreview + '</td>' +
                     '<td><strong>' + c.supplier + '</strong>' + onlineIcon + '</td>' +
                     '<td>' + c.materialCode + '</td>' +
