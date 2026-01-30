@@ -252,7 +252,7 @@
         /* Multiselect */
         .multiselect-container {
             position: relative;
-            min-width: 250px;
+            min-width: 350px;
         }
         
         .multiselect-header {
@@ -275,12 +275,12 @@
             position: absolute;
             top: 100%;
             left: 0;
-            right: 0;
+            min-width: 400px;
             background: white;
             border: 2px solid #2196F3;
             border-radius: 8px;
             margin-top: 5px;
-            max-height: 300px;
+            max-height: 400px;
             overflow-y: auto;
             z-index: 1000;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -292,11 +292,12 @@
         }
         
         .multiselect-option {
-            padding: 10px 15px;
+            padding: 12px 15px;
             cursor: pointer;
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
+            white-space: nowrap;
         }
         
         .multiselect-option:hover {
@@ -305,8 +306,16 @@
         
         .multiselect-option input[type="checkbox"] {
             cursor: pointer;
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
+            flex-shrink: 0;
+        }
+        
+        .multiselect-option label {
+            cursor: pointer;
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
         
         .multiselect-search {
