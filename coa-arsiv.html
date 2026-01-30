@@ -700,6 +700,37 @@
         
         async function saveToGoogleSheets(record) {
             try {
+                // Dosya boyutu kontrolü (max 500KB base64 = ~375KB dosya)
+                const MAX_SIZE = 500 * 1024; // 500KB
+                const fileSize = record.fileData.length;
+                
+                if (fileSize > MAX_SIZE) {
+                    showToast('⚠️ Dosya çok büyük (' + Math.round(fileSize/1024) + 'KB). Max 500KB desteklenir.', 'warning');
+                    showToast('💡 Dosyayı küçültün veya sıkıştırın.', 'info');
+                    
+                    // Sadece meta veriyi kaydet, dosya olmadan
+                    const metaOnly = {
+                        id: record.id,
+                        supplier: record.supplier,
+                        materialCode: record.materialCode,
+                        deliveryDate: record.deliveryDate,
+                        lotNumber: record.lotNumber,
+                        notes: record.notes + ' [DOSYA ÇOK BÜYÜK - MANUEL YÜKLE]',
+                        fileName: record.fileName,
+                        fileType: record.fileType,
+                        fileUrl: '',
+                        driveFileId: '',
+                        createdAt: record.createdAt
+                    };
+                    
+                    const params = new URLSearchParams();
+                    params.append('action', 'addCOA');
+                    params.append('data', JSON.stringify(metaOnly));
+                    
+                    await jsonp(googleScriptUrl + '?' + params.toString());
+                    return true;
+                }
+                
                 showToast('📤 Dosya Google Drive\'a yükleniyor...', 'info');
                 
                 // Dosyayı parçalara böl ve Drive'a yükle
@@ -712,10 +743,9 @@
                 
                 if (uploadResult && uploadResult.success) {
                     console.log('Google Drive yükleme başarılı:', uploadResult.viewUrl);
-                    // Yerel kayda Drive URL'sini ekle
                     record.fileUrl = uploadResult.viewUrl;
                     record.driveFileId = uploadResult.fileId;
-                    delete record.fileData; // Artık Drive'da, yerel veriyi sil
+                    delete record.fileData;
                     showToast('✅ Google Drive\'a yüklendi!', 'success');
                     return true;
                 } else {
@@ -732,7 +762,7 @@
         
         // Dosyayı parçalara böl ve Drive'a yükle
         async function uploadFileToDrive(base64Data, fileName, mimeType, recordData) {
-            const CHUNK_SIZE = 40000; // 40KB parçalar (URL limiti için güvenli)
+            const CHUNK_SIZE = 30000; // 30KB parçalar (daha güvenli)
             const uploadId = 'upload_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
             
             // Base64 verisini parçalara böl
@@ -741,8 +771,8 @@
                 chunks.push(base64Data.slice(i, i + CHUNK_SIZE));
             }
             
-            console.log(`Dosya ${chunks.length} parçaya bölündü (toplam ${Math.round(base64Data.length/1024)}KB)`);
-            showToast(`📦 ${chunks.length} parça yüklenecek...`, 'info');
+            console.log('Dosya ' + chunks.length + ' parcaya bolundu (toplam ' + Math.round(base64Data.length/1024) + 'KB)');
+            showToast('📦 ' + chunks.length + ' parça yüklenecek...', 'info');
             
             // Her parçayı sırayla gönder
             for (let i = 0; i < chunks.length; i++) {
