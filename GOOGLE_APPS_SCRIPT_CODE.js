@@ -34,11 +34,38 @@ function doGet(e) {
         result = searchCOA(e.parameter.query, e.parameter.field);
         break;
       case 'addCOA':
-        const data = e.parameter.data ? JSON.parse(decodeURIComponent(e.parameter.data)) : null;
-        result = data ? addCOA(data) : { success: false, error: 'Veri eksik' };
+        // Data hem encoded hem düz gelebilir
+        let addData = null;
+        if (e.parameter.data) {
+          try {
+            // Önce düz JSON olarak dene
+            addData = JSON.parse(e.parameter.data);
+          } catch(parseErr) {
+            try {
+              // Encoded olarak dene
+              addData = JSON.parse(decodeURIComponent(e.parameter.data));
+            } catch(decodeErr) {
+              result = { success: false, error: 'Data parse hatası: ' + parseErr.toString() };
+              break;
+            }
+          }
+        }
+        result = addData ? addCOA(addData) : { success: false, error: 'Veri eksik' };
         break;
       case 'updateCOA':
-        const updateData = e.parameter.data ? JSON.parse(decodeURIComponent(e.parameter.data)) : null;
+        let updateData = null;
+        if (e.parameter.data) {
+          try {
+            updateData = JSON.parse(e.parameter.data);
+          } catch(parseErr) {
+            try {
+              updateData = JSON.parse(decodeURIComponent(e.parameter.data));
+            } catch(decodeErr) {
+              result = { success: false, error: 'Data parse hatası' };
+              break;
+            }
+          }
+        }
         result = updateData ? updateCOA(e.parameter.id, updateData) : { success: false, error: 'Veri eksik' };
         break;
       case 'deleteCOA':
@@ -675,28 +702,50 @@ function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sheet = ss.getSheetByName(SHEET_NAME);
   
+  // Ana isim bulunamazsa alternatifleri dene
   if (!sheet) {
     for (const name of ALTERNATIVE_NAMES) {
       sheet = ss.getSheetByName(name);
-      if (sheet) break;
+      if (sheet) {
+        // Eğer Sayfa1 veya Sheet1 bulunduysa, COA_Arsiv olarak yeniden adlandır
+        if (name === 'Sayfa1' || name === 'Sheet1') {
+          try {
+            sheet.setName(SHEET_NAME);
+            console.log('Sheet adı değiştirildi: ' + name + ' -> ' + SHEET_NAME);
+          } catch(e) {
+            console.log('Sheet adı değiştirilemedi:', e.toString());
+          }
+        }
+        break;
+      }
     }
   }
   
+  // Hiçbir sheet bulunamazsa oluştur
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_NAME);
+    console.log('Yeni sheet oluşturuldu: ' + SHEET_NAME);
   }
   
   // Header kontrolü - sheet boşsa veya header yoksa ekle
   const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'createdAt', 'updatedAt'];
   
-  if (sheet.getLastRow() === 0 || sheet.getRange(1, 1).getValue() !== 'id') {
-    // Header'ları ekle
+  // İlk hücreyi kontrol et
+  const firstCell = sheet.getRange(1, 1).getValue();
+  
+  if (sheet.getLastRow() === 0 || firstCell !== 'id') {
+    // Header'ları ekle veya güncelle
+    if (sheet.getLastRow() > 0 && firstCell && firstCell !== 'id') {
+      // Mevcut veri var ama header yok - en üste satır ekle
+      sheet.insertRowBefore(1);
+    }
+    
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
     
     // Sütun genişliklerini ayarla
-    sheet.setColumnWidth(1, 150); // id
+    sheet.setColumnWidth(1, 180); // id
     sheet.setColumnWidth(2, 150); // supplier
     sheet.setColumnWidth(3, 120); // materialCode
     sheet.setColumnWidth(4, 100); // deliveryDate
@@ -704,7 +753,7 @@ function getSheet() {
     sheet.setColumnWidth(6, 200); // notes
     sheet.setColumnWidth(9, 300); // fileUrl
     
-    console.log('Header\'lar eklendi: ' + headers.join(', '));
+    console.log('Header\'lar eklendi/güncellendi: ' + headers.join(', '));
   }
   
   return sheet;

@@ -551,7 +551,7 @@
         // ==================== Global Variables ====================
         let coaData = [];
         let suppliers = [];
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbxlscyioV9dDuaIsu_0z6tAoBGmax4ixhQ9uCspEoHX2RMboc5q-zV8RLsM7eHerJaY/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbyiIoDA9C1dMI8im4slUmFZNksh9JxI3qWMUt1dpz0U1R_9wdK-tC3H9xjfmZACF9kAWw/exec';
         let selectedFile = null;
         let selectedFileData = null;
         
@@ -717,33 +717,7 @@
             try {
                 showToast('📤 Kaydediliyor...', 'info');
                 
-                // Dosya varsa önce Drive'a yükle
-                if (record.fileData) {
-                    console.log('Dosya yükleniyor...');
-                    
-                    const uploadResult = await uploadFileToDrive(
-                        record.fileData,
-                        record.fileName,
-                        record.fileType || 'image/jpeg',
-                        record
-                    );
-                    
-                    if (uploadResult && uploadResult.success) {
-                        // Başarılı - Drive bilgilerini kayda ekle
-                        record.fileUrl = uploadResult.viewUrl;
-                        record.driveFileId = uploadResult.fileId;
-                        delete record.fileData; // Yerel veriyi temizle
-                        
-                        showToast('✅ Kayıt ve dosya başarıyla kaydedildi!', 'success');
-                        return true;
-                    } else {
-                        // Yükleme başarısız - sadece metadata kaydet
-                        console.warn('Dosya yüklenemedi, sadece metadata kaydediliyor:', uploadResult?.error);
-                        showToast('⚠️ Dosya yüklenemedi ama kayıt oluşturuldu', 'warning');
-                    }
-                }
-                
-                // Dosya yoksa veya yükleme başarısızsa sadece metadata kaydet
+                // Kayıt verisini hazırla (fileData hariç)
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
@@ -755,15 +729,53 @@
                     fileType: record.fileType || '',
                     fileUrl: record.fileUrl || '',
                     driveFileId: record.driveFileId || '',
-                    createdAt: record.createdAt
+                    createdAt: record.createdAt || new Date().toISOString()
                 };
+                
+                // Dosya varsa önce Drive'a yükle
+                if (record.fileData) {
+                    console.log('Dosya yükleniyor...', record.fileName);
+                    showToast('📤 Dosya yükleniyor...', 'info');
+                    
+                    try {
+                        const uploadResult = await uploadFileToDrive(
+                            record.fileData,
+                            record.fileName,
+                            record.fileType || 'image/jpeg',
+                            saveData // recordData olarak gönder
+                        );
+                        
+                        console.log('Upload sonucu:', uploadResult);
+                        
+                        if (uploadResult && uploadResult.success) {
+                            // uploadFileToDrive zaten recordData ile Sheet'e kaydetti
+                            record.fileUrl = uploadResult.viewUrl;
+                            record.driveFileId = uploadResult.fileId;
+                            delete record.fileData;
+                            
+                            showToast('✅ Kayıt ve dosya başarıyla kaydedildi!', 'success');
+                            return true;
+                        } else {
+                            console.error('Upload başarısız:', uploadResult?.error);
+                            showToast('⚠️ Dosya yüklenemedi: ' + (uploadResult?.error || 'Bilinmeyen hata'), 'warning');
+                            // Dosya yüklenemese de kayıt eklemeye devam et
+                        }
+                    } catch (uploadError) {
+                        console.error('Upload exception:', uploadError);
+                        showToast('⚠️ Dosya yükleme hatası, sadece kayıt ekleniyor...', 'warning');
+                        // Dosya yüklenemese de kayıt eklemeye devam et
+                    }
+                }
+                
+                // Dosya yoksa veya yükleme başarısızsa sadece metadata kaydet
+                console.log('Sheets\'e kayıt ekleniyor:', saveData);
                 
                 const params = new URLSearchParams();
                 params.append('action', 'addCOA');
-                params.append('data', encodeURIComponent(JSON.stringify(saveData)));
+                params.append('data', JSON.stringify(saveData)); // encodeURIComponent KALDIRILDI - URLSearchParams zaten encode ediyor
                 
                 const url = googleScriptUrl + '?' + params.toString();
-                console.log('Sheets isteği gönderiliyor...');
+                console.log('Sheets URL:', url.substring(0, 200) + '...');
                 
                 const result = await jsonp(url);
                 console.log('Sheets yanıtı:', result);
