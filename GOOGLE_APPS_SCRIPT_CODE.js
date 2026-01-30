@@ -1027,9 +1027,25 @@ function updateCOA(id, newData) {
     const sheet = getSheet();
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
+    const driveFileIdCol = headers.indexOf('driveFileId');
     
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] == id) {
+        // Eğer yeni dosya yükleniyorsa (yeni driveFileId varsa), eski dosyayı Drive'dan sil
+        if (newData.driveFileId && driveFileIdCol >= 0) {
+          const oldDriveFileId = data[i][driveFileIdCol];
+          
+          // Eski ve yeni dosya farklıysa, eski dosyayı sil
+          if (oldDriveFileId && oldDriveFileId !== newData.driveFileId) {
+            try {
+              deleteFileFromDrive(oldDriveFileId);
+              console.log('Eski dosya silindi: ' + oldDriveFileId);
+            } catch(deleteErr) {
+              console.log('Eski dosya silinemedi (önemsiz): ' + deleteErr.toString());
+            }
+          }
+        }
+        
         // fileData yoksa mevcut değeri koru, varsa güncelle
         // Diğer alanları güncelle
         newData.updatedAt = new Date().toISOString();

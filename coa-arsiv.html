@@ -711,7 +711,7 @@
         let coaData = [];
         let suppliers = [];
         let selectedSuppliers = new Set(); // Seçili tedarikçiler
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbxVSfhEzceoSopVIjNkdw8Jrx0Lf8hO70uqEWhQIlg-mrPi-AjkRWONG1dgrgyE6y7q-Q/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw/exec';
         let selectedFile = null;
         let selectedFileData = null;
         let editMode = false;
@@ -744,14 +744,14 @@
             }
             
             // Doğru URL - localStorage'daki eski URL'yi güncelle
-            const correctUrl = 'https://script.google.com/macros/s/AKfycbxVSfhEzceoSopVIjNkdw8Jrx0Lf8hO70uqEWhQIlg-mrPi-AjkRWONG1dgrgyE6y7q-Q/exec';
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw/exec';
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
                 
                 // Eski veya yanlış URL ise güncelle
-                if (!savedUrl || !savedUrl.includes('AKfycbxVSfhEzceoSopVIjNkdw8Jrx0Lf8hO70uqEWhQIlg-mrPi-AjkRWONG1dgrgyE6y7q-Q')) {
+                if (!savedUrl || !savedUrl.includes('AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw')) {
                     savedUrl = correctUrl;
                     localStorage.setItem('google_script_url', correctUrl);
                     console.log('URL güncellendi:', correctUrl);
