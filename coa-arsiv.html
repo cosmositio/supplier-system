@@ -698,20 +698,32 @@
         
         async function saveToGoogleSheets(record) {
             try {
-                // Dosya boyutunu kontrol et (base64 çok büyük olabilir)
-                const dataSize = record.fileData ? record.fileData.length : 0;
-                console.log('Kaydedilecek veri boyutu:', Math.round(dataSize / 1024) + ' KB');
+                // Dosya verisini ayır - sadece meta veriyi Google Sheets'e gönder
+                // Dosya yerel kalacak (localStorage'da)
+                const metaRecord = {
+                    id: record.id,
+                    supplier: record.supplier,
+                    materialCode: record.materialCode,
+                    deliveryDate: record.deliveryDate,
+                    lotNumber: record.lotNumber,
+                    notes: record.notes,
+                    fileName: record.fileName,
+                    fileType: record.fileType,
+                    // fileData göndermiyoruz - çok büyük
+                    createdAt: record.createdAt
+                };
                 
-                // Çok büyük dosyalar için uyarı
-                if (dataSize > 5 * 1024 * 1024) {
-                    showToast('⚠️ Dosya çok büyük (>5MB), yükleme uzun sürebilir', 'warning');
-                }
+                console.log('Meta veri gönderiliyor (dosya yerel kalacak)...');
                 
-                // Form POST ile gönder (URL limiti sorunu için)
-                const result = await postToGoogleSheets(record);
+                // JSONP ile gönder
+                const params = new URLSearchParams();
+                params.append('action', 'addCOA');
+                params.append('data', JSON.stringify(metaRecord));
+                
+                const result = await jsonp(googleScriptUrl + '?' + params.toString());
                 
                 if (result && result.success) {
-                    console.log('Kayıt başarılı:', result.id);
+                    console.log('Google Sheets kayıt başarılı:', result.id);
                     return true;
                 } else {
                     console.error('Kayıt hatası:', result?.error);
@@ -728,65 +740,6 @@
             }
         }
         
-        // POST ile Google Sheets'e gönder (büyük veriler için)
-        async function postToGoogleSheets(record) {
-            return new Promise((resolve, reject) => {
-                // Gizli iframe oluştur
-                const iframeName = 'post_frame_' + Date.now();
-                const iframe = document.createElement('iframe');
-                iframe.name = iframeName;
-                iframe.style.display = 'none';
-                document.body.appendChild(iframe);
-                
-                // Form oluştur
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = googleScriptUrl + '?action=addCOA';
-                form.target = iframeName;
-                form.style.display = 'none';
-                
-                // Veriyi gizli input olarak ekle
-                const input = document.createElement('input');
-                input.type = 'hidden';
-                input.name = 'data';
-                input.value = JSON.stringify(record);
-                form.appendChild(input);
-                
-                document.body.appendChild(form);
-                
-                // Timeout
-                const timeout = setTimeout(() => {
-                    cleanup();
-                    // Timeout olsa bile başarılı sayabiliriz - veri gitti
-                    resolve({ success: true, message: 'Gönderildi (timeout)' });
-                }, 10000);
-                
-                function cleanup() {
-                    clearTimeout(timeout);
-                    if (form.parentNode) form.parentNode.removeChild(form);
-                    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-                }
-                
-                // iframe yüklendiğinde
-                iframe.onload = () => {
-                    // İlk yükleme boş, ikinci yükleme sonuç
-                    setTimeout(() => {
-                        cleanup();
-                        resolve({ success: true, message: 'Kaydedildi' });
-                    }, 1000);
-                };
-                
-                iframe.onerror = () => {
-                    cleanup();
-                    reject(new Error('Form gönderimi başarısız'));
-                };
-                
-                // Formu gönder
-                console.log('Form POST gönderiliyor...');
-                form.submit();
-            });
-        }
-        
         // Bekleyen kayıtları senkronize et
         async function syncPendingRecords() {
             if (!googleScriptUrl) return;
@@ -799,7 +752,24 @@
             
             for (const record of pending) {
                 try {
-                    const result = await postToGoogleSheets(record);
+                    // Sadece meta veriyi gönder
+                    const metaRecord = {
+                        id: record.id,
+                        supplier: record.supplier,
+                        materialCode: record.materialCode,
+                        deliveryDate: record.deliveryDate,
+                        lotNumber: record.lotNumber,
+                        notes: record.notes,
+                        fileName: record.fileName,
+                        fileType: record.fileType,
+                        createdAt: record.createdAt
+                    };
+                    
+                    const params = new URLSearchParams();
+                    params.append('action', 'addCOA');
+                    params.append('data', JSON.stringify(metaRecord));
+                    
+                    const result = await jsonp(googleScriptUrl + '?' + params.toString());
                     if (result.success) {
                         delete record.pending;
                         console.log('Senkronize edildi:', record.id);
