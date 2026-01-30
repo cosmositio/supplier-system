@@ -711,7 +711,7 @@
         let coaData = [];
         let suppliers = [];
         let selectedSuppliers = new Set(); // Seçili tedarikçiler
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbwsoqlAro7UaRkgWwNGqa9M8JDV3kOcAUU6TX5cqrsxDMXAkABUsxWmNCS3VMX1iQsUFQ/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbxVSfhEzceoSopVIjNkdw8Jrx0Lf8hO70uqEWhQIlg-mrPi-AjkRWONG1dgrgyE6y7q-Q/exec';
         let selectedFile = null;
         let selectedFileData = null;
         let editMode = false;
@@ -744,14 +744,14 @@
             }
             
             // Doğru URL - localStorage'daki eski URL'yi güncelle
-            const correctUrl = 'https://script.google.com/macros/s/AKfycbwsoqlAro7UaRkgWwNGqa9M8JDV3kOcAUU6TX5cqrsxDMXAkABUsxWmNCS3VMX1iQsUFQ/exec';
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbxVSfhEzceoSopVIjNkdw8Jrx0Lf8hO70uqEWhQIlg-mrPi-AjkRWONG1dgrgyE6y7q-Q/exec';
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
                 
                 // Eski veya yanlış URL ise güncelle
-                if (!savedUrl || !savedUrl.includes('AKfycbwsoqlAro7UaRkgWwNGqa9M8JDV3kOcAUU6TX5cqrsxDMXAkABUsxWmNCS3VMX1iQsUFQ')) {
+                if (!savedUrl || !savedUrl.includes('AKfycbxVSfhEzceoSopVIjNkdw8Jrx0Lf8hO70uqEWhQIlg-mrPi-AjkRWONG1dgrgyE6y7q-Q')) {
                     savedUrl = correctUrl;
                     localStorage.setItem('google_script_url', correctUrl);
                     console.log('URL güncellendi:', correctUrl);
@@ -1432,15 +1432,20 @@
         
         async function updateToGoogleSheets(record) {
             try {
-                const params = new URLSearchParams();
-                params.append('action', 'updateCOA');
-                params.append('id', record.id);
+                // fileData çok büyükse gönderme (zaten Drive'da var)
+                const recordToSend = { ...record };
+                
+                // Eğer fileData çok büyükse (>50KB) gönderme
+                if (recordToSend.fileData && recordToSend.fileData.length > 50000) {
+                    console.log('fileData çok büyük, gönderilmiyor (Drive\'da mevcut)');
+                    delete recordToSend.fileData;
+                }
                 
                 // Form-encoded POST için data'yı encode et
                 const formData = new URLSearchParams();
                 formData.append('action', 'updateCOA');
                 formData.append('id', record.id);
-                formData.append('data', JSON.stringify(record));
+                formData.append('data', JSON.stringify(recordToSend));
                 
                 const response = await fetch(googleScriptUrl, {
                     method: 'POST',

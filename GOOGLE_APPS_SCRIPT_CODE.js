@@ -1030,14 +1030,19 @@ function updateCOA(id, newData) {
     
     for (let i = 1; i < data.length; i++) {
       if (data[i][0] == id) {
-        // fileData'yı güncelleme
-        delete newData.fileData;
+        // fileData yoksa mevcut değeri koru, varsa güncelle
+        // Diğer alanları güncelle
         newData.updatedAt = new Date().toISOString();
         
         // Mevcut veriyi güncelle
         const row = headers.map((header, j) => {
+          // fileData özel durumu: frontend'ten gelmemişse mevcut değeri koru
+          if (header === 'fileData') {
+            return newData.hasOwnProperty('fileData') && newData.fileData ? newData.fileData : data[i][j];
+          }
+          // Normal alanlar: yeni veri varsa güncelle, yoksa mevcut değeri koru
           if (newData.hasOwnProperty(header) && header !== 'id' && header !== 'createdAt') {
-            return newData[header];
+            return newData[header] !== undefined ? newData[header] : data[i][j];
           }
           return data[i][j];
         });
