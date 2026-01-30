@@ -1968,7 +1968,20 @@
                     return;
                 }
                 
-                // Dosya değiştirilmediyse mevcut dosyayı kullan
+                // Yeni dosya yüklendiyse Drive'a upload et
+                let uploadResult = null;
+                if (selectedFileData) {
+                    showToast('🔄 Yeni dosya Drive\'a yükleniyor...', 'info');
+                    uploadResult = await uploadToDriveChunked(selectedFileData, selectedFile.name, selectedFile.type);
+                    
+                    if (!uploadResult || !uploadResult.success) {
+                        showToast('❌ Dosya yüklenemedi!', 'error');
+                        return;
+                    }
+                    showToast('✅ Dosya Drive\'a yüklendi!', 'success');
+                }
+                
+                // Record oluştur - yeni dosya varsa onun bilgilerini kullan, yoksa eski dosyayı koru
                 const record = {
                     id: editingId,
                     supplier: supplier,
@@ -1977,11 +1990,11 @@
                     lotNumber: lotNumber,
                     location: location,
                     notes: notes,
-                    fileName: selectedFileData ? selectedFile.name : existingRecord.fileName,
-                    fileType: selectedFileData ? selectedFile.type : existingRecord.fileType,
-                    fileData: selectedFileData || existingRecord.fileData,
-                    fileUrl: existingRecord.fileUrl || '',
-                    driveFileId: existingRecord.driveFileId || '',
+                    fileName: uploadResult ? uploadResult.fileName : existingRecord.fileName,
+                    fileType: uploadResult ? selectedFile.type : existingRecord.fileType,
+                    fileData: uploadResult ? selectedFileData : existingRecord.fileData,
+                    fileUrl: uploadResult ? uploadResult.viewUrl : existingRecord.fileUrl,
+                    driveFileId: uploadResult ? uploadResult.fileId : existingRecord.driveFileId,
                     createdAt: existingRecord.createdAt,
                     updatedAt: new Date().toISOString()
                 };
