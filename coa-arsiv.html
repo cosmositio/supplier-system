@@ -702,48 +702,10 @@
         
         async function saveToGoogleSheets(record) {
             try {
-                // Dosya boyutunu kontrol et - max 50KB (URL limiti için)
-                const MAX_URL_SIZE = 50 * 1024;
-                
-                if (record.fileData && record.fileData.length > MAX_URL_SIZE) {
-                    showToast('⚠️ Dosya hala büyük, daha fazla sıkıştırılıyor...', 'info');
-                    
-                    // Daha fazla sıkıştır
-                    const extraCompressed = await compressDataUrl(record.fileData, 40);
-                    if (extraCompressed.length < MAX_URL_SIZE) {
-                        record.fileData = extraCompressed;
-                        showToast('✅ Ek sıkıştırma: ' + Math.round(extraCompressed.length/1024) + 'KB', 'success');
-                    } else {
-                        // Hala büyükse sadece metadata kaydet
-                        showToast('⚠️ Dosya çok büyük, sadece bilgiler kaydediliyor', 'warning');
-                        
-                        const metaOnly = {
-                            id: record.id,
-                            supplier: record.supplier,
-                            materialCode: record.materialCode,
-                            deliveryDate: record.deliveryDate,
-                            lotNumber: record.lotNumber,
-                            notes: record.notes,
-                            fileName: record.fileName,
-                            fileType: record.fileType,
-                            fileUrl: '',
-                            driveFileId: '',
-                            createdAt: record.createdAt
-                        };
-                        
-                        const params = new URLSearchParams();
-                        params.append('action', 'addCOA');
-                        params.append('data', JSON.stringify(metaOnly));
-                        
-                        await jsonp(googleScriptUrl + '?' + params.toString());
-                        showToast('✅ Kayıt bilgileri kaydedildi (dosya hariç)', 'success');
-                        return true;
-                    }
-                }
-                
                 showToast('📤 Google Sheets\'e kaydediliyor...', 'info');
                 
-                // Dosya ile birlikte kaydet
+                // Sadece metadata kaydet (dosya yerel kalacak, URL limiti nedeniyle)
+                // URL limiti ~2KB olduğu için base64 dosya gönderilemez
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
@@ -752,8 +714,10 @@
                     lotNumber: record.lotNumber,
                     notes: record.notes,
                     fileName: record.fileName,
-                    fileType: 'image/jpeg',
-                    fileData: record.fileData,
+                    fileType: record.fileType || 'image/jpeg',
+                    fileData: '', // URL limiti nedeniyle dosya gönderilemez
+                    fileUrl: '',
+                    driveFileId: '',
                     createdAt: record.createdAt
                 };
                 
@@ -761,10 +725,13 @@
                 params.append('action', 'addCOA');
                 params.append('data', JSON.stringify(saveData));
                 
-                const result = await jsonp(googleScriptUrl + '?' + params.toString());
+                const url = googleScriptUrl + '?' + params.toString();
+                console.log('İstek URL boyutu:', url.length, 'karakter');
+                
+                const result = await jsonp(url);
                 
                 if (result && result.success) {
-                    showToast('✅ Google Sheets\'e kaydedildi!', 'success');
+                    showToast('✅ Google Sheets\'e kaydedildi! (Dosya yerel)', 'success');
                     return true;
                 } else {
                     throw new Error(result?.error || 'Bilinmeyen hata');
@@ -772,7 +739,7 @@
                 
             } catch (error) {
                 console.error('Kayıt hatası:', error);
-                showToast('❌ Hata: ' + error.message, 'error');
+                showToast('❌ Sheets hatası: ' + error.message, 'error');
                 return false;
             }
         }
