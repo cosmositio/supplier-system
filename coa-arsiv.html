@@ -581,6 +581,11 @@
                 </div>
                 
                 <div class="form-group">
+                    <label>Lokasyon</label>
+                    <input type="text" id="location" placeholder="Örn: Depo A, Raf 5">
+                </div>
+                
+                <div class="form-group">
                     <label>Sertifika Dosyası *</label>
                     <div class="upload-area" id="uploadArea">
                         <div class="upload-icon">📄</div>
@@ -641,6 +646,7 @@
                                 <th>Hammadde Kodu</th>
                                 <th>İrsaliye Tarihi</th>
                                 <th>Lot No</th>
+                                <th>Lokasyon</th>
                                 <th>İşlem</th>
                             </tr>
                         </thead>
@@ -672,7 +678,7 @@
         let coaData = [];
         let suppliers = [];
         let selectedSuppliers = new Set(); // Seçili tedarikçiler
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbz-jIyt9-U3s1FyiaPj2c4sWlETknLreyM3XXHYFIfSoLY-A3BmtAl7-Opdntwg1eOH/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbx2ZdISz_VK3t5IA9t7get26Q5sHgPNFyFQakewjBv13vqHuAaZ9WoWLeWyOzpZHEKK/exec';
         let selectedFile = null;
         let selectedFileData = null;
         
@@ -702,14 +708,14 @@
             }
             
             // Doğru URL - localStorage'daki eski URL'yi güncelle
-            const correctUrl = 'https://script.google.com/macros/s/AKfycbz-jIyt9-U3s1FyiaPj2c4sWlETknLreyM3XXHYFIfSoLY-A3BmtAl7-Opdntwg1eOH/exec';
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbx2ZdISz_VK3t5IA9t7get26Q5sHgPNFyFQakewjBv13vqHuAaZ9WoWLeWyOzpZHEKK/exec';
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
                 
                 // Eski veya yanlış URL ise güncelle
-                if (!savedUrl || !savedUrl.includes('AKfycbz-jIyt9-U3s1FyiaPj2c4sWlETknLreyM3XXHYFIfSoLY-A3BmtAl7-Opdntwg1eOH')) {
+                if (!savedUrl || !savedUrl.includes('AKfycbx2ZdISz_VK3t5IA9t7get26Q5sHgPNFyFQakewjBv13vqHuAaZ9WoWLeWyOzpZHEKK')) {
                     savedUrl = correctUrl;
                     localStorage.setItem('google_script_url', correctUrl);
                     console.log('URL güncellendi:', correctUrl);
@@ -831,6 +837,7 @@
                             materialCode: record.materialCode,
                             deliveryDate: record.deliveryDate,
                             lotNumber: record.lotNumber || '',
+                            location: record.location || '',
                             notes: record.notes || '',
                             fileName: record.fileName || '',
                             fileType: record.fileType || '',
@@ -924,6 +931,7 @@
                     materialCode: record.materialCode,
                     deliveryDate: record.deliveryDate,
                     lotNumber: record.lotNumber || '',
+                    location: record.location || '',
                     notes: record.notes || '',
                     fileName: record.fileName || '',
                     fileType: record.fileType || '',
@@ -1857,6 +1865,7 @@
             const materialCode = document.getElementById('materialCode').value.trim();
             const deliveryDate = document.getElementById('deliveryDate').value;
             const lotNumber = document.getElementById('lotNumber').value.trim();
+            const location = document.getElementById('location').value.trim();
             const notes = document.getElementById('notes').value.trim();
             
             // Validation
@@ -1883,6 +1892,7 @@
                 materialCode: materialCode,
                 deliveryDate: deliveryDate,
                 lotNumber: lotNumber,
+                location: location,
                 notes: notes,
                 fileName: selectedFile.name,
                 fileType: selectedFile.type,
@@ -1917,6 +1927,7 @@
             document.getElementById('materialCode').value = '';
             document.getElementById('deliveryDate').value = new Date().toISOString().split('T')[0];
             document.getElementById('lotNumber').value = '';
+            document.getElementById('location').value = '';
             document.getElementById('notes').value = '';
             document.getElementById('fileInput').value = '';
             document.getElementById('filePreview').innerHTML = '';
@@ -2057,6 +2068,7 @@
                     '<td>' + c.materialCode + '</td>' +
                     '<td>' + formatDate(c.deliveryDate) + '</td>' +
                     '<td>' + (c.lotNumber || '-') + '</td>' +
+                    '<td>' + (c.location || '-') + '</td>' +
                     '<td class="actions">' +
                         '<button class="btn btn-secondary btn-sm" onclick="viewFile(\'' + c.id + '\')" title="Goruntule">👁</button>' +
                         '<button class="btn btn-secondary btn-sm" onclick="downloadFile(\'' + c.id + '\')" title="Indir">📥</button>' +
@@ -2074,7 +2086,8 @@
                 const matchSearch = !search || 
                     String(c.supplier || '').toLowerCase().includes(search) ||
                     String(c.materialCode || '').toLowerCase().includes(search) ||
-                    String(c.lotNumber || '').toLowerCase().includes(search);
+                    String(c.lotNumber || '').toLowerCase().includes(search) ||
+                    String(c.location || '').toLowerCase().includes(search);
                     
                 // Çoklu tedarikçi filtresi: Hiç seçilmemişse tümünü göster, seçilmişse sadece seçilenleri göster
                 const matchSupplier = selectedSuppliers.size === 0 || selectedSuppliers.has(c.supplier);
