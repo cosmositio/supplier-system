@@ -2825,11 +2825,19 @@
         // Tedarikçi listesini localStorage'a kaydet (COA sayfası için)
         function saveSupplierListForCOA() {
             try {
-                // supplierStatusMap TÜM tedarikçileri içerir (filtrelenmemiş)
-                const supplierNames = Array.from(supplierStatusMap.keys()).filter(n => n).sort();
+                // allResults'tan direk alıyoruz (Excel yüklendiğinde dolu olur)
+                const supplierNames = allResults
+                    .map(r => r.name)
+                    .filter(n => n && !n.startsWith('[Tedarikçi Adı Yok')) // Boş adları çıkar
+                    .sort();
+                
                 localStorage.setItem('supplierListForCOA', JSON.stringify(supplierNames));
                 console.log('✅ Tedarikçi listesi COA için kaydedildi:', supplierNames.length, 'tedarikçi');
-                console.log('İlk 10:', supplierNames.slice(0, 10));
+                
+                if (supplierNames.length > 0) {
+                    console.log('İlk 5 tedarikçi:', supplierNames.slice(0, 5));
+                    console.log('Son 5 tedarikçi:', supplierNames.slice(-5));
+                }
             } catch (e) {
                 console.error('❌ Tedarikçi listesi kaydetme hatası:', e);
             }
