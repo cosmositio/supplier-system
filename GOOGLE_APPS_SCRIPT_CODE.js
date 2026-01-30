@@ -3,8 +3,12 @@
 // Bu kodu Google Apps Script'e yapıştırın
 // ==========================================
 
-// Sheet adı - Türkçe ise "Sayfa1", İngilizce ise "Sheet1"
+// Sheet adı - Türkçe karakterler ve boşluk destekli
+// Eğer farklı bir isim kullanıyorsanız buradan değiştirin
 const SHEET_NAME = 'COA_Arsiv';
+
+// Alternatif sheet isimleri (bunlardan biri varsa onu kullanır)
+const ALTERNATIVE_NAMES = ['COA Arşiv', 'COA_Arsiv', 'COA Arsiv', 'Sayfa1', 'Sheet1'];
 
 // CORS için header'lar
 function doGet(e) {
@@ -123,12 +127,35 @@ function processPost(e) {
 
 function getSheet() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  
+  // Önce tercih edilen ismi dene
   let sheet = ss.getSheetByName(SHEET_NAME);
   
-  // Sheet yoksa oluştur
+  // Bulunamazsa alternatif isimleri dene
   if (!sheet) {
+    for (const name of ALTERNATIVE_NAMES) {
+      sheet = ss.getSheetByName(name);
+      if (sheet) {
+        console.log('Alternatif sheet bulundu: ' + name);
+        break;
+      }
+    }
+  }
+  
+  // Hala yoksa yeni oluştur
+  if (!sheet) {
+    console.log('Yeni sheet oluşturuluyor: ' + SHEET_NAME);
     sheet = ss.insertSheet(SHEET_NAME);
     // Başlıkları ekle
+    const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileData', 'createdAt'];
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+    sheet.setFrozenRows(1);
+  }
+  
+  // Başlık kontrolü - eğer başlıklar yoksa ekle
+  const firstRow = sheet.getRange(1, 1, 1, 10).getValues()[0];
+  if (!firstRow[0] || firstRow[0] !== 'id') {
     const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'fileName', 'fileType', 'fileData', 'createdAt'];
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
     sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
