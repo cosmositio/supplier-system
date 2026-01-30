@@ -92,6 +92,9 @@ function doGet(e) {
       case 'getUploadStatus':
         result = getUploadStatus(e.parameter.uploadId);
         break;
+      case 'appendFileData':
+        result = appendFileData(e.parameter.id, e.parameter.chunk, e.parameter.chunkIndex, e.parameter.totalChunks);
+        break;
       default:
         result = { success: false, error: 'Geçersiz action: ' + action };
     }
@@ -935,6 +938,61 @@ function addCOA(record) {
     };
   } catch(error) {
     return { success: false, error: 'Kayıt eklenemedi: ' + error.toString() };
+  }
+}
+
+// Dosya verisini chunk olarak ekle/birleştir
+function appendFileData(id, chunk, chunkIndex, totalChunks) {
+  if (!id || chunk === undefined) {
+    return { success: false, error: 'ID ve chunk gerekli' };
+  }
+  
+  try {
+    const sheet = getSheet();
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const fileDataCol = headers.indexOf('fileData');
+    
+    if (fileDataCol < 0) {
+      return { success: false, error: 'fileData sütunu bulunamadı' };
+    }
+    
+    // Kaydı bul
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][0] == id) {
+        // Mevcut fileData'yı al
+        let currentFileData = data[i][fileDataCol] || '';
+        
+        // Chunk'ı ekle
+        const idx = parseInt(chunkIndex);
+        const total = parseInt(totalChunks);
+        
+        // İlk chunk ise sıfırla
+        if (idx === 0) {
+          currentFileData = chunk;
+        } else {
+          currentFileData += chunk;
+        }
+        
+        // fileData hücresini güncelle
+        sheet.getRange(i + 1, fileDataCol + 1).setValue(currentFileData);
+        
+        const isComplete = (idx + 1) >= total;
+        
+        return { 
+          success: true, 
+          message: isComplete ? 'Dosya yükleme tamamlandı' : 'Chunk eklendi',
+          chunkIndex: idx,
+          totalChunks: total,
+          currentSize: currentFileData.length,
+          isComplete: isComplete
+        };
+      }
+    }
+    
+    return { success: false, error: 'Kayıt bulunamadı: ' + id };
+  } catch(error) {
+    return { success: false, error: 'Chunk ekleme hatası: ' + error.toString() };
   }
 }
 

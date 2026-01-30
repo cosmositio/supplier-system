@@ -551,7 +551,7 @@
         // ==================== Global Variables ====================
         let coaData = [];
         let suppliers = [];
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbw5ncrimhE5QY9NigbHtXOj3wz2zVNrm_xwyR_Litvn3gaE8d_mL7pcA4HtHcbx7UZWng/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbyKc3x6789fi6mgzMoDeSHocIVnTGd13owZsF8Wg0pVqU_w9VCl-ABkwYo_i7y15QxJ/exec';
         let selectedFile = null;
         let selectedFileData = null;
         
@@ -572,14 +572,14 @@
             loadSuppliers();
             
             // Doğru URL - localStorage'daki eski URL'yi güncelle
-            const correctUrl = 'https://script.google.com/macros/s/AKfycbw5ncrimhE5QY9NigbHtXOj3wz2zVNrm_xwyR_Litvn3gaE8d_mL7pcA4HtHcbx7UZWng/exec';
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbyKc3x6789fi6mgzMoDeSHocIVnTGd13owZsF8Wg0pVqU_w9VCl-ABkwYo_i7y15QxJ/exec';
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
                 
                 // Eski veya yanlış URL ise güncelle
-                if (!savedUrl || !savedUrl.includes('AKfycbw5ncrimhE5QY9NigbHtXOj3wz2zVNrm_xwyR_Litvn3gaE8d_mL7pcA4HtHcbx7UZWng')) {
+                if (!savedUrl || !savedUrl.includes('AKfycbyKc3x6789fi6mgzMoDeSHocIVnTGd13owZsF8Wg0pVqU_w9VCl-ABkwYo_i7y15QxJ')) {
                     savedUrl = correctUrl;
                     localStorage.setItem('google_script_url', correctUrl);
                     console.log('URL güncellendi:', correctUrl);
@@ -738,23 +738,21 @@
                 
                 let compressedFileData = '';
                 
-                // Dosya varsa çok sıkıştır (URL limiti için max 15KB)
+                // Dosya varsa sıkıştır
                 if (record.fileData) {
                     console.log('Dosya sıkıştırılıyor...', record.fileName);
                     showToast('📦 Dosya sıkıştırılıyor...', 'info');
                     
                     try {
-                        // Dosyayı max 15KB'a sıkıştır (URL limit için güvenli boyut)
                         compressedFileData = await compressForSheets(record.fileData, 15);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedFileData.length / 1024), 'KB');
-                        
                         showToast('✅ Dosya sıkıştırıldı (' + Math.round(compressedFileData.length / 1024) + 'KB)', 'success');
                     } catch (compressError) {
                         console.error('Sıkıştırma hatası:', compressError);
                     }
                 }
                 
-                // Kayıt verisini hazırla
+                // Kayıt verisini hazırla (fileData hariç - ayrı gönderilecek)
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
@@ -766,39 +764,101 @@
                     fileType: record.fileType || '',
                     fileUrl: '',
                     driveFileId: '',
-                    fileData: compressedFileData,
+                    fileData: '', // Chunk upload ile ayrı gönderilecek
                     createdAt: record.createdAt || new Date().toISOString()
                 };
                 
-                const jsonData = JSON.stringify(saveData);
-                console.log('Sheets\'e kayıt ekleniyor, boyut:', Math.round(jsonData.length / 1024), 'KB');
-                
-                // JSONP ile gönder (küçük dosya boyutu URL'e sığar)
+                // Önce kaydı oluştur (fileData olmadan)
                 const params = new URLSearchParams();
                 params.append('action', 'addCOA');
-                params.append('data', jsonData);
+                params.append('data', JSON.stringify(saveData));
                 
                 const url = googleScriptUrl + '?' + params.toString();
-                console.log('URL boyutu:', url.length, 'karakter');
+                console.log('Kayıt oluşturuluyor...');
                 
                 const result = await jsonp(url);
-                console.log('Sheets yanıtı:', result);
+                console.log('Kayıt sonucu:', result);
                 
-                if (result && result.success) {
-                    if (compressedFileData) {
-                        record.fileData = compressedFileData;
-                    }
-                    showToast('✅ Google Sheets\'e kaydedildi! (Dosya online saklandı)', 'success');
-                    return true;
-                } else {
-                    throw new Error(result?.error || 'Bilinmeyen hata');
+                if (!result || !result.success) {
+                    throw new Error(result?.error || 'Kayıt oluşturulamadı');
                 }
+                
+                // Dosya varsa chunk upload ile gönder
+                if (compressedFileData && compressedFileData.length > 0) {
+                    showToast('📤 Dosya yükleniyor...', 'info');
+                    
+                    try {
+                        const uploadSuccess = await uploadFileInChunks(record.id, compressedFileData);
+                        
+                        if (uploadSuccess) {
+                            record.fileData = compressedFileData;
+                            showToast('✅ Kayıt ve dosya başarıyla yüklendi!', 'success');
+                        } else {
+                            showToast('⚠️ Kayıt eklendi ama dosya yüklenemedi', 'warning');
+                        }
+                    } catch (uploadErr) {
+                        console.error('Dosya yükleme hatası:', uploadErr);
+                        showToast('⚠️ Kayıt eklendi ama dosya yüklenemedi: ' + uploadErr.message, 'warning');
+                    }
+                } else {
+                    showToast('✅ Google Sheets\'e kaydedildi!', 'success');
+                }
+                
+                return true;
                 
             } catch (error) {
                 console.error('Kaydetme hatası:', error);
                 showToast('❌ Hata: ' + error.message, 'error');
                 return false;
             }
+        }
+        
+        // Dosyayı chunk'lar halinde yükle
+        async function uploadFileInChunks(recordId, fileData) {
+            const CHUNK_SIZE = 8000; // Her chunk 8KB (URL limitine sığar)
+            const chunks = [];
+            
+            // Dosyayı parçala
+            for (let i = 0; i < fileData.length; i += CHUNK_SIZE) {
+                chunks.push(fileData.substring(i, i + CHUNK_SIZE));
+            }
+            
+            console.log('Toplam chunk sayısı:', chunks.length);
+            
+            // Her chunk'ı sırayla gönder
+            for (let i = 0; i < chunks.length; i++) {
+                showToast('📤 Dosya yükleniyor... ' + Math.round((i + 1) / chunks.length * 100) + '%', 'info');
+                
+                const chunkParams = new URLSearchParams();
+                chunkParams.append('action', 'appendFileData');
+                chunkParams.append('id', recordId);
+                chunkParams.append('chunk', chunks[i]);
+                chunkParams.append('chunkIndex', i);
+                chunkParams.append('totalChunks', chunks.length);
+                
+                const chunkUrl = googleScriptUrl + '?' + chunkParams.toString();
+                
+                try {
+                    const chunkResult = await jsonp(chunkUrl);
+                    
+                    if (!chunkResult || !chunkResult.success) {
+                        console.error('Chunk hatası:', i, chunkResult?.error);
+                        return false;
+                    }
+                    
+                    console.log('Chunk gönderildi:', i + 1, '/', chunks.length);
+                } catch (e) {
+                    console.error('Chunk gönderme hatası:', i, e);
+                    return false;
+                }
+                
+                // Rate limiting - çok hızlı istek atmayalım
+                if (i < chunks.length - 1) {
+                    await new Promise(r => setTimeout(r, 200));
+                }
+            }
+            
+            return true;
         }
         
         // Dosya yükleme fonksiyonu - birden fazla servis dener
