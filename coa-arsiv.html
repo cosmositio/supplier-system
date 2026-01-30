@@ -555,17 +555,6 @@
         
         // ==================== Initialization ====================
         document.addEventListener('DOMContentLoaded', function() {
-            // Load saved URL
-            const savedUrl = localStorage.getItem('google_script_url');
-            if (savedUrl) {
-                document.getElementById('googleScriptUrl').value = savedUrl;
-                googleScriptUrl = savedUrl;
-                connectGoogleSheets(true);
-            } else {
-                loadFromLocalStorage();
-                updateUI();
-            }
-            
             // Set default date to today
             document.getElementById('deliveryDate').value = new Date().toISOString().split('T')[0];
             
@@ -579,6 +568,19 @@
             
             // Load suppliers from localStorage (from index.html)
             loadSuppliers();
+            
+            // Load saved URL and connect (delayed to ensure all functions are loaded)
+            setTimeout(function() {
+                const savedUrl = localStorage.getItem('google_script_url');
+                if (savedUrl) {
+                    document.getElementById('googleScriptUrl').value = savedUrl;
+                    googleScriptUrl = savedUrl;
+                    connectGoogleSheets(true);
+                } else {
+                    loadFromLocalStorage();
+                    updateUI();
+                }
+            }, 100);
         });
         
         // ==================== JSONP Helper ====================
