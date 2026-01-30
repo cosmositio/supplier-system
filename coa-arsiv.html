@@ -1004,7 +1004,7 @@
         
         // Dosyayı Google Drive'a chunk'lar halinde yükle
         async function uploadToDriveChunked(fileData, fileName, mimeType) {
-            const CHUNK_SIZE = 10000; // 10KB per chunk (güvenli URL limiti)
+            const CHUNK_SIZE = 3000; // 3KB per chunk (URL limit için güvenli boyut)
             const chunks = [];
             
             // Dosyayı parçala
