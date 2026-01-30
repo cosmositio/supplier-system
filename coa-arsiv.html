@@ -571,17 +571,23 @@
             // Load suppliers from localStorage (from index.html)
             loadSuppliers();
             
+            // Doğru URL - localStorage'daki eski URL'yi güncelle
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbyiIoDA9C1dMI8im4slUmFZNksh9JxI3qWMUt1dpz0U1R_9wdK-tC3H9xjfmZACF9kAWw/exec';
+            
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
-                const savedUrl = localStorage.getItem('google_script_url');
-                if (savedUrl) {
-                    document.getElementById('googleScriptUrl').value = savedUrl;
-                    googleScriptUrl = savedUrl;
-                    connectGoogleSheets(true);
-                } else {
-                    loadFromLocalStorage();
-                    updateUI();
+                let savedUrl = localStorage.getItem('google_script_url');
+                
+                // Eski veya yanlış URL ise güncelle
+                if (!savedUrl || !savedUrl.includes('AKfycbyiIoDA9C1dMI8im4slUmFZNksh9JxI3qWMUt1dpz0U1R_9wdK-tC3H9xjfmZACF9kAWw')) {
+                    savedUrl = correctUrl;
+                    localStorage.setItem('google_script_url', correctUrl);
+                    console.log('URL güncellendi:', correctUrl);
                 }
+                
+                document.getElementById('googleScriptUrl').value = savedUrl;
+                googleScriptUrl = savedUrl;
+                connectGoogleSheets(true);
             }, 100);
         });
         
@@ -717,6 +723,34 @@
             try {
                 showToast('📤 Kaydediliyor...', 'info');
                 
+                // Dosya varsa Catbox.moe'ye yükle (Google Drive yerine - daha güvenilir)
+                if (record.fileData) {
+                    console.log('Dosya Catbox.moe\'ye yükleniyor...', record.fileName);
+                    showToast('📤 Dosya yükleniyor...', 'info');
+                    
+                    try {
+                        const uploadResult = await uploadToImgBB(record.fileData);
+                        
+                        console.log('Catbox sonucu:', uploadResult);
+                        
+                        if (uploadResult && uploadResult.success) {
+                            record.fileUrl = uploadResult.url;
+                            record.driveFileId = ''; // Catbox kullanıyoruz
+                            delete record.fileData;
+                            showToast('✅ Dosya yüklendi!', 'success');
+                        } else {
+                            console.error('Catbox upload başarısız:', uploadResult?.error);
+                            showToast('⚠️ Dosya yüklenemedi: ' + (uploadResult?.error || 'Bilinmeyen hata'), 'warning');
+                            // Dosya yüklenemese de kayıt eklemeye devam et
+                            delete record.fileData;
+                        }
+                    } catch (uploadError) {
+                        console.error('Upload exception:', uploadError);
+                        showToast('⚠️ Dosya yükleme hatası', 'warning');
+                        delete record.fileData;
+                    }
+                }
+                
                 // Kayıt verisini hazırla (fileData hariç)
                 const saveData = {
                     id: record.id,
@@ -732,47 +766,11 @@
                     createdAt: record.createdAt || new Date().toISOString()
                 };
                 
-                // Dosya varsa önce Drive'a yükle
-                if (record.fileData) {
-                    console.log('Dosya yükleniyor...', record.fileName);
-                    showToast('📤 Dosya yükleniyor...', 'info');
-                    
-                    try {
-                        const uploadResult = await uploadFileToDrive(
-                            record.fileData,
-                            record.fileName,
-                            record.fileType || 'image/jpeg',
-                            saveData // recordData olarak gönder
-                        );
-                        
-                        console.log('Upload sonucu:', uploadResult);
-                        
-                        if (uploadResult && uploadResult.success) {
-                            // uploadFileToDrive zaten recordData ile Sheet'e kaydetti
-                            record.fileUrl = uploadResult.viewUrl;
-                            record.driveFileId = uploadResult.fileId;
-                            delete record.fileData;
-                            
-                            showToast('✅ Kayıt ve dosya başarıyla kaydedildi!', 'success');
-                            return true;
-                        } else {
-                            console.error('Upload başarısız:', uploadResult?.error);
-                            showToast('⚠️ Dosya yüklenemedi: ' + (uploadResult?.error || 'Bilinmeyen hata'), 'warning');
-                            // Dosya yüklenemese de kayıt eklemeye devam et
-                        }
-                    } catch (uploadError) {
-                        console.error('Upload exception:', uploadError);
-                        showToast('⚠️ Dosya yükleme hatası, sadece kayıt ekleniyor...', 'warning');
-                        // Dosya yüklenemese de kayıt eklemeye devam et
-                    }
-                }
-                
-                // Dosya yoksa veya yükleme başarısızsa sadece metadata kaydet
                 console.log('Sheets\'e kayıt ekleniyor:', saveData);
                 
                 const params = new URLSearchParams();
                 params.append('action', 'addCOA');
-                params.append('data', JSON.stringify(saveData)); // encodeURIComponent KALDIRILDI - URLSearchParams zaten encode ediyor
+                params.append('data', JSON.stringify(saveData));
                 
                 const url = googleScriptUrl + '?' + params.toString();
                 console.log('Sheets URL:', url.substring(0, 200) + '...');
@@ -904,161 +902,6 @@
             });
         }
         
-        // Dosyayı parçalara böl ve Drive'a yükle (Geliştirilmiş versiyon)
-        async function uploadFileToDrive(base64Data, fileName, mimeType, recordData) {
-            const CHUNK_SIZE = 45000; // 45KB parçalar (Google Cache limiti: 100KB)
-            const MAX_RETRIES = 3;
-            const RETRY_DELAY = 1000; // 1 saniye
-            
-            // Benzersiz upload ID
-            const uploadId = 'up_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            
-            // Base64 prefix'i temizle
-            const base64Content = base64Data.includes(',') ? base64Data.split(',')[1] : base64Data;
-            
-            // Boyut kontrolü - küçük dosyalar için direkt upload
-            const fileSizeKB = Math.round(base64Content.length * 0.75 / 1024);
-            
-            if (fileSizeKB < 500) {
-                // Küçük dosya - direkt upload
-                console.log('Küçük dosya, direkt upload yapılıyor (' + fileSizeKB + 'KB)');
-                showToast('📤 Dosya yükleniyor (' + fileSizeKB + 'KB)...', 'info');
-                
-                const params = new URLSearchParams();
-                params.append('action', 'uploadFile');
-                params.append('fileData', base64Data);
-                params.append('fileName', fileName);
-                params.append('mimeType', mimeType || 'application/octet-stream');
-                if (recordData) {
-                    params.append('recordData', JSON.stringify(recordData));
-                }
-                
-                try {
-                    const result = await jsonp(googleScriptUrl + '?' + params.toString());
-                    return result;
-                } catch (error) {
-                    console.error('Direkt upload hatası:', error);
-                    // Direkt upload başarısız olursa chunk upload'a geç
-                    showToast('⚠️ Direkt upload başarısız, parçalı yüklemeye geçiliyor...', 'warning');
-                }
-            }
-            
-            // Büyük dosya - chunk upload
-            const chunks = [];
-            for (let i = 0; i < base64Content.length; i += CHUNK_SIZE) {
-                chunks.push(base64Content.slice(i, i + CHUNK_SIZE));
-            }
-            
-            console.log('Dosya ' + chunks.length + ' parçaya bölündü (' + fileSizeKB + 'KB)');
-            showToast('📦 ' + chunks.length + ' parça yüklenecek...', 'info');
-            
-            // Upload başlat (init)
-            try {
-                const initParams = new URLSearchParams();
-                initParams.append('action', 'initUpload');
-                initParams.append('fileName', fileName);
-                initParams.append('mimeType', mimeType || 'application/octet-stream');
-                initParams.append('totalSize', base64Content.length.toString());
-                initParams.append('totalChunks', chunks.length.toString());
-                
-                const initResult = await jsonp(googleScriptUrl + '?' + initParams.toString());
-                if (!initResult.success) {
-                    throw new Error('Upload başlatılamadı: ' + (initResult.error || 'Bilinmeyen hata'));
-                }
-                console.log('Upload başlatıldı:', uploadId);
-            } catch (error) {
-                console.error('Upload init hatası:', error);
-                throw error;
-            }
-            
-            // Her parçayı sırayla gönder (retry mekanizmasıyla)
-            for (let i = 0; i < chunks.length; i++) {
-                const progress = Math.round((i + 1) / chunks.length * 100);
-                let lastError = null;
-                
-                for (let retry = 0; retry < MAX_RETRIES; retry++) {
-                    try {
-                        const params = new URLSearchParams();
-                        params.append('action', 'uploadChunk');
-                        params.append('uploadId', uploadId);
-                        params.append('chunkIndex', i.toString());
-                        params.append('totalChunks', chunks.length.toString());
-                        params.append('chunk', chunks[i]); // Encode etmeye gerek yok
-                        
-                        const result = await jsonp(googleScriptUrl + '?' + params.toString());
-                        
-                        if (!result.success) {
-                            if (result.expired) {
-                                throw new Error('Upload oturumu süresi doldu. Lütfen tekrar deneyin.');
-                            }
-                            throw new Error(result.error || 'Parça yüklenemedi');
-                        }
-                        
-                        console.log(`Parça ${i + 1}/${chunks.length} yüklendi (%${progress})`);
-                        lastError = null;
-                        break; // Başarılı, döngüden çık
-                        
-                    } catch (error) {
-                        lastError = error;
-                        console.warn(`Parça ${i} yükleme hatası (deneme ${retry + 1}/${MAX_RETRIES}):`, error.message);
-                        
-                        if (retry < MAX_RETRIES - 1) {
-                            await new Promise(r => setTimeout(r, RETRY_DELAY * (retry + 1)));
-                        }
-                    }
-                }
-                
-                if (lastError) {
-                    console.error(`Parça ${i} yüklenemedi:`, lastError);
-                    showToast('❌ Yükleme hatası: Parça ' + (i + 1), 'error');
-                    throw lastError;
-                }
-                
-                // İlerleme göster
-                if (i % 3 === 0 || i === chunks.length - 1) {
-                    showToast(`⏳ Yükleniyor: %${progress}`, 'info');
-                }
-            }
-            
-            // Yüklemeyi tamamla - Drive'a kaydet
-            console.log('Parçalar birleştiriliyor ve Drive\'a kaydediliyor...');
-            showToast('🔄 Drive\'a kaydediliyor...', 'info');
-            
-            const finalParams = new URLSearchParams();
-            finalParams.append('action', 'finalizeUpload');
-            finalParams.append('uploadId', uploadId);
-            finalParams.append('fileName', fileName);
-            finalParams.append('mimeType', mimeType || 'application/octet-stream');
-            
-            if (recordData) {
-                // Sadece gerekli alanları gönder
-                const cleanRecord = {
-                    id: recordData.id,
-                    supplier: recordData.supplier,
-                    materialCode: recordData.materialCode,
-                    deliveryDate: recordData.deliveryDate,
-                    lotNumber: recordData.lotNumber || '',
-                    notes: recordData.notes || '',
-                    fileName: fileName,
-                    fileType: mimeType,
-                    createdAt: recordData.createdAt || new Date().toISOString()
-                };
-                finalParams.append('recordData', JSON.stringify(cleanRecord));
-            }
-            
-            const finalResult = await jsonp(googleScriptUrl + '?' + finalParams.toString());
-            
-            if (!finalResult.success) {
-                if (finalResult.missingChunks) {
-                    console.error('Eksik parçalar:', finalResult.missingChunks);
-                    throw new Error('Bazı parçalar eksik: ' + finalResult.missingChunks.join(', '));
-                }
-                throw new Error('Finalize hatası: ' + (finalResult.error || 'Bilinmeyen'));
-            }
-            
-            return finalResult;
-        }
-        
         // Bekleyen kayıtları senkronize et
         async function syncPendingRecords() {
             if (!googleScriptUrl) return;
@@ -1075,29 +918,34 @@
             for (const record of pending) {
                 try {
                     if (record.fileData) {
-                        // Dosyası olan kayıtları Drive'a yükle
-                        const result = await uploadFileToDrive(
-                            record.fileData,
-                            record.fileName,
-                            record.fileType || 'image/jpeg',
-                            record
-                        );
+                        // Dosyası olan kayıtları Catbox'a yükle
+                        const uploadResult = await uploadToImgBB(record.fileData);
                         
-                        if (result && result.success) {
-                            record.fileUrl = result.viewUrl;
-                            record.driveFileId = result.fileId;
+                        if (uploadResult && uploadResult.success) {
+                            record.fileUrl = uploadResult.url;
                             delete record.fileData;
                             delete record.pending;
-                            successCount++;
+                            
+                            // Şimdi Sheets'e kaydet
+                            const params = new URLSearchParams();
+                            params.append('action', 'addCOA');
+                            params.append('data', JSON.stringify(record));
+                            
+                            const result = await jsonp(googleScriptUrl + '?' + params.toString());
+                            if (result && result.success) {
+                                successCount++;
+                            } else {
+                                failCount++;
+                            }
                         } else {
                             failCount++;
-                            console.error('Senkronizasyon hatası:', record.id, result?.error);
+                            console.error('Senkronizasyon hatası:', record.id, uploadResult?.error);
                         }
                     } else {
                         // Sadece meta veri olan kayıtları Sheets'e ekle
                         const params = new URLSearchParams();
                         params.append('action', 'addCOA');
-                        params.append('data', encodeURIComponent(JSON.stringify(record)));
+                        params.append('data', JSON.stringify(record));
                         
                         const result = await jsonp(googleScriptUrl + '?' + params.toString());
                         if (result && result.success) {
