@@ -609,7 +609,7 @@
                         } else {
                             reject(new Error('Timeout - Tüm denemeler başarısız'));
                         }
-                    }, 15000);
+                    }, 30000); // 30 saniye timeout (büyük dosyalar için)
                     
                     function cleanup() {
                         clearTimeout(timeout);
@@ -836,7 +836,7 @@
         
         // Dosyayı Google Drive'a chunk'lar halinde yükle
         async function uploadToDriveChunked(fileData, fileName, mimeType) {
-            const CHUNK_SIZE = 40000; // 40KB per chunk (Apps Script cache friendly)
+            const CHUNK_SIZE = 10000; // 10KB per chunk (güvenli URL limiti)
             const chunks = [];
             
             // Dosyayı parçala
@@ -844,7 +844,7 @@
                 chunks.push(fileData.substring(i, i + CHUNK_SIZE));
             }
             
-            console.log('Drive upload - Toplam chunk sayısı:', chunks.length);
+            console.log('Drive upload - Toplam chunk sayısı:', chunks.length, '(her biri ~10KB)');
             
             try {
                 // 1. Upload başlat
@@ -855,6 +855,7 @@
                     '&totalChunks=' + chunks.length +
                     '&totalSize=' + fileData.length;
                 
+                console.log('Init URL uzunluğu:', initUrl.length);
                 const initResult = await jsonp(initUrl);
                 
                 if (!initResult || !initResult.success) {
@@ -876,7 +877,25 @@
                         '&totalChunks=' + chunks.length +
                         '&chunk=' + encodeURIComponent(chunks[i]);
                     
-                    const chunkResult = await jsonp(chunkUrl);
+                    console.log('Chunk', i, 'URL uzunluğu:', chunkUrl.length);
+                    
+                    // Retry mekanizması
+                    let chunkResult = null;
+                    let retryCount = 0;
+                    const maxRetries = 3;
+                    
+                    while (retryCount < maxRetries) {
+                        try {
+                            chunkResult = await jsonp(chunkUrl);
+                            if (chunkResult && chunkResult.success) {
+                                break; // Başarılı
+                            }
+                        } catch (e) {
+                            console.log('Chunk', i, 'retry', retryCount + 1);
+                        }
+                        retryCount++;
+                        await new Promise(r => setTimeout(r, 1000)); // 1 sn bekle
+                    }
                     
                     if (!chunkResult || !chunkResult.success) {
                         console.error('Chunk hatası:', i, chunkResult?.error);
@@ -885,13 +904,14 @@
                     
                     console.log('Chunk gönderildi:', i + 1, '/', chunks.length);
                     
-                    // Rate limiting
+                    // Rate limiting - daha uzun bekle
                     if (i < chunks.length - 1) {
-                        await new Promise(r => setTimeout(r, 300));
+                        await new Promise(r => setTimeout(r, 500));
                     }
                 }
                 
                 // 3. Upload tamamla
+                showToast('📤 Dosya birleştiriliyor...', 'info');
                 const finalizeUrl = googleScriptUrl + 
                     '?action=finalizeUpload' +
                     '&uploadId=' + encodeURIComponent(uploadId) +
