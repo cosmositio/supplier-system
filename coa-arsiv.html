@@ -1302,6 +1302,9 @@
             // Doğru URL - localStorage'daki eski URL'yi güncelle
             const correctUrl = 'https://script.google.com/macros/s/AKfycbzlZBmNGbsQTDLBqGkDto3FWDb26Jc4lk2OhER5OhgmmU1QiPjgdi27goEVTbhqlDFIVw/exec';
             
+            // Mobilde URL input'una default değeri yaz
+            document.getElementById('googleScriptUrl').value = correctUrl;
+            
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
@@ -1625,18 +1628,24 @@
                         });
                         
                         console.log('Drive upload sonucu:', uploadResult);
+                        console.log('Upload response keys:', Object.keys(uploadResult || {}));
                         
                         if (uploadResult && uploadResult.success) {
                             fileUrl = uploadResult.viewUrl || uploadResult.directUrl;
                             driveFileId = uploadResult.fileId;
                             fileSize = uploadResult.fileSize || 0;
+                            console.log('✅ Drive yükleme başarılı:', { fileUrl, driveFileId, fileSize });
                             showToast('✅ Dosya Drive\'a yüklendi!', 'success');
                         } else {
                             console.error('Drive upload hatası:', uploadResult?.error);
+                            console.error('Tam response:', JSON.stringify(uploadResult));
+                            alert('Drive Hatası: ' + (uploadResult?.error || 'Bilinmeyen hata'));
                             throw new Error(uploadResult?.error || 'Dosya Drive\'a yüklenemedi');
                         }
                     } catch (uploadErr) {
-                        console.error('Drive upload hatası:', uploadErr);
+                        console.error('Drive upload exception:', uploadErr);
+                        console.error('Error stack:', uploadErr.stack);
+                        alert('Upload Exception: ' + uploadErr.message);
                         throw new Error('Drive yükleme hatası: ' + uploadErr.message);
                     }
                 }
@@ -1693,16 +1702,22 @@
                 });
                 
                 console.log('Kayıt sonucu:', result);
+                console.log('Kayıt response keys:', Object.keys(result || {}));
                 
                 if (!result || !result.success) {
+                    console.error('Kayıt hatası detay:', JSON.stringify(result));
+                    alert('Kayıt Hatası: ' + (result?.error || 'Bilinmeyen hata'));
                     throw new Error(result?.error || 'Kayıt oluşturulamadı');
                 }
                 
+                console.log('✅ Kayıt başarılı, ID:', result.id);
                 showToast('✅ Kayıt ve dosya başarıyla Drive\'a eklendi!', 'success');
                 return true;
                 
             } catch (error) {
                 console.error('Kaydetme hatası:', error);
+                console.error('Error stack:', error.stack);
+                alert('Kaydetme Hatası: ' + error.message);
                 showToast('❌ Hata: ' + error.message, 'error');
                 return false;
             }

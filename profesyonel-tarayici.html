@@ -399,9 +399,12 @@
                     const finalGray = new cv.Mat();
                     cv.cvtColor(dst, finalGray, cv.COLOR_RGBA2GRAY);
                     
-                    // 9. Adaptive threshold for document enhancement
+                    // 9. Gentle contrast enhancement (not too aggressive)
+                    cv.equalizeHist(finalGray, finalGray);
+                    
+                    // Adaptive threshold with gentle parameters
                     cv.adaptiveThreshold(finalGray, finalGray, 255, 
-                        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 15, 10);
+                        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 5);
                     
                     // 10. Denoise
                     cv.medianBlur(finalGray, finalGray, 3);
