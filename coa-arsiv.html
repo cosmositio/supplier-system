@@ -910,6 +910,11 @@
                 </div>
                 
                 <div class="form-group">
+                    <label>İrsaliye No</label>
+                    <input type="text" id="deliveryNo" placeholder="Örn: IRS-2024-001">
+                </div>
+                
+                <div class="form-group">
                     <label>Parti/Lot No</label>
                     <input type="text" id="lotNumber" placeholder="Örn: 2I02618">
                 </div>
@@ -999,6 +1004,7 @@
                                 <th>Tedarikçi</th>
                                 <th>Hammadde Kodu</th>
                                 <th>İrsaliye Tarihi</th>
+                                <th>İrsaliye No</th>
                                 <th>Lot No</th>
                                 <th>Boyut</th>
                                 <th>Lokasyon</th>
@@ -2800,6 +2806,7 @@
             const supplier = document.getElementById('supplierInput').value.trim();
             const materialCode = document.getElementById('materialCode').value.trim();
             const deliveryDate = document.getElementById('deliveryDate').value;
+            const deliveryNo = document.getElementById('deliveryNo').value.trim();
             const lotNumber = document.getElementById('lotNumber').value.trim();
             const location = document.getElementById('location').value;
             const notes = document.getElementById('notes').value.trim();
@@ -2871,6 +2878,7 @@
                     supplier: supplier,
                     materialCode: materialCode,
                     deliveryDate: deliveryDate,
+                    deliveryNo: deliveryNo,
                     lotNumber: lotNumber,
                     location: location,
                     notes: notes,
@@ -2956,6 +2964,7 @@
                 supplier: supplier,
                 materialCode: materialCode,
                 deliveryDate: deliveryDate,
+                deliveryNo: deliveryNo,
                 lotNumber: lotNumber,
                 location: location,
                 notes: notes,
@@ -2994,6 +3003,7 @@
             document.getElementById('supplierInput').value = '';
             document.getElementById('materialCode').value = '';
             document.getElementById('deliveryDate').value = new Date().toISOString().split('T')[0];
+            document.getElementById('deliveryNo').value = '';
             document.getElementById('lotNumber').value = '';
             document.getElementById('location').value = '';
             document.getElementById('notes').value = '';
@@ -3021,6 +3031,7 @@
             // Tarih formatını düzelt (YYYY-MM-DD)
             const deliveryDate = record.deliveryDate || '';
             document.getElementById('deliveryDate').value = deliveryDate.split('T')[0];
+            document.getElementById('deliveryNo').value = record.deliveryNo || '';
             document.getElementById('lotNumber').value = record.lotNumber || '';
             document.getElementById('location').value = record.location || '';
             document.getElementById('notes').value = record.notes || '';
@@ -3301,6 +3312,7 @@
                     '<td><strong>' + c.supplier + '</strong>' + onlineIcon + '</td>' +
                     '<td>' + c.materialCode + '</td>' +
                     '<td>' + formatDate(c.deliveryDate) + '</td>' +
+                    '<td>' + (c.deliveryNo || '-') + '</td>' +
                     '<td>' + (c.lotNumber || '-') + '</td>' +
                     '<td style="font-size: 0.85em; color: #666;">' + fileSizeDisplay + '</td>' +
                     '<td>' + (c.location || '-') + '</td>' +
@@ -3322,6 +3334,7 @@
                 const matchSearch = !search || 
                     String(c.supplier || '').toLowerCase().includes(search) ||
                     String(c.materialCode || '').toLowerCase().includes(search) ||
+                    String(c.deliveryNo || '').toLowerCase().includes(search) ||
                     String(c.lotNumber || '').toLowerCase().includes(search) ||
                     String(c.location || '').toLowerCase().includes(search);
                     

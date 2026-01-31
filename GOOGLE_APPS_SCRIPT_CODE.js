@@ -763,7 +763,7 @@ function getSheet() {
   }
   
   // Header kontrolü - sheet boşsa veya header yoksa ekle
-  const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'lotNumber', 'notes', 'location', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'fileData', 'fileSize', 'createdAt', 'updatedAt'];
+  const headers = ['id', 'supplier', 'materialCode', 'deliveryDate', 'deliveryNo', 'lotNumber', 'notes', 'location', 'fileName', 'fileType', 'fileUrl', 'driveFileId', 'fileData', 'fileSize', 'createdAt', 'updatedAt'];
   
   // İlk hücreyi kontrol et
   const firstCell = sheet.getRange(1, 1).getValue();
