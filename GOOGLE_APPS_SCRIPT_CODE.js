@@ -155,7 +155,7 @@ function doPost(e) {
     // Data field'ı parse et
     if (postData.data && typeof postData.data === 'string') {
       try {
-        postData = JSON.parse(postData.data);
+        postData.data = JSON.parse(postData.data);
       } catch(parseErr) {
         // Parse edilemezse olduğu gibi bırak
       }
@@ -163,10 +163,10 @@ function doPost(e) {
     
     switch(action) {
       case 'addCOA':
-        result = addCOA(postData);
+        result = addCOA(postData.data || postData);
         break;
       case 'updateCOA':
-        result = updateCOA(postData.id, postData);
+        result = updateCOA(postData.id, postData.data || postData);
         break;
       case 'uploadFile':
         result = uploadFileDirectly(postData);
