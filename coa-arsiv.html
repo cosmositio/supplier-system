@@ -3703,7 +3703,9 @@
 
         // ==================== KAMERA TARAYICI ====================
         
-        // Kamera ile fotoğraf çekme (basit, tarama yok)
+        // Kamera ile fotoğraf çekme - düzenleme ekranı açılır
+        window.editorImageData = null;
+        
         function handleCameraCapture(event) {
             const file = event.target.files[0];
             if (!file) return;
@@ -3712,24 +3714,68 @@
             
             const reader = new FileReader();
             reader.onload = function(e) {
+                // Store image data for editor
+                window.editorImageData = e.target.result;
+                
+                // Open photo editor in popup
+                const width = Math.min(500, window.innerWidth - 20);
+                const height = Math.min(800, window.innerHeight - 20);
+                const left = (window.innerWidth - width) / 2;
+                const top = (window.innerHeight - height) / 2;
+                
+                const editorWindow = window.open(
+                    'foto-duzenleyici.html',
+                    'PhotoEditor',
+                    `width=${width},height=${height},left=${left},top=${top},resizable=yes`
+                );
+                
+                if (!editorWindow) {
+                    showToast('❌ Pop-up engellendi! Tarayıcı ayarlarından izin verin', 'error');
+                    // Fallback - direkt ekle düzenleme olmadan
+                    selectedFile = file;
+                    selectedFileData = e.target.result;
+                    
+                    const uploadArea = document.getElementById('uploadArea');
+                    const preview = document.getElementById('filePreview');
+                    
+                    uploadArea.classList.add('has-file');
+                    preview.innerHTML = '<img src="' + e.target.result + '" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 10px;"><p style="margin-top: 10px; color: #FF9800; font-weight: 600;">⚠️ Pop-up engelli - düzenleme atlandı</p>';
+                    
+                    showToast('⚠️ Fotoğraf eklendi (düzenleme yapılamadı)', 'warning');
+                }
+            };
+            reader.readAsDataURL(file);
+            
+            // Input'u sıfırla
+            event.target.value = '';
+        }
+        
+        // Düzenleyiciden gelen mesajları dinle
+        window.addEventListener('message', async (event) => {
+            if (event.data.type === 'editedPhoto') {
+                const dataURL = event.data.data;
+                const sizeKB = event.data.size;
+                
+                console.log('Düzenlenmiş fotoğraf alındı:', sizeKB, 'KB');
+                
+                // Convert to File object
+                const blob = await (await fetch(dataURL)).blob();
+                const file = new File([blob], 'edited_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+                
+                // Set as selected file
                 selectedFile = file;
-                selectedFileData = e.target.result;
+                selectedFileData = dataURL;
                 
                 const uploadArea = document.getElementById('uploadArea');
                 const preview = document.getElementById('filePreview');
                 
                 uploadArea.classList.add('has-file');
-                preview.innerHTML = '<img src="' + e.target.result + '" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 10px;"><p style="margin-top: 10px; color: #4CAF50; font-weight: 600;">✅ Fotoğraf eklendi!</p>';
+                preview.innerHTML = '<img src="' + dataURL + '" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 10px;"><p style="margin-top: 10px; color: #4CAF50; font-weight: 600;">✅ Fotoğraf düzenlendi ve eklendi! (' + sizeKB + ' KB)</p>';
                 
-                showToast('✅ Fotoğraf forma eklendi!', 'success');
-            };
-            reader.readAsDataURL(file);
+                showToast('✅ Düzenlenmiş fotoğraf forma eklendi!', 'success');
+            }
             
-            // Input'u sıfırla (aynı fotoğrafı tekrar çekebilmek için)
-            event.target.value = '';
-        }
-        
-        // Eski tarayıcı fonksiyonları (kullanılmıyor artık)
+            // Eski tarayıcı mesajları (kullanılmıyor artık)
         let scannerStream = null;
         let scannerCapturedData = null;
         let scannerWindow = null;

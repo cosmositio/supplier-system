@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>📸 Fotoğraf Düzenleyici</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #1a1a1a;
+            color: white;
+            overflow-x: hidden;
+            position: fixed;
+            width: 100%;
+            height: 100%;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            background: #2a2a2a;
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #333;
+        }
+
+        .header h1 {
+            font-size: 18px;
+            font-weight: 600;
+        }
+
+        .btn-close {
+            background: #ff3b30;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .canvas-container {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            background: #000;
+        }
+
+        #canvas {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+            touch-action: none;
+        }
+
+        .controls {
+            background: #2a2a2a;
+            padding: 20px;
+            border-top: 1px solid #333;
+            overflow-y: auto;
+            max-height: 50vh;
+        }
+
+        .control-group {
+            margin-bottom: 20px;
+        }
+
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+
+        .control-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #aaa;
+        }
+
+        .slider-container {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #007AFF;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #007AFF;
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+        }
+
+        .slider-value {
+            min-width: 40px;
+            text-align: center;
+            font-size: 14px;
+            color: #007AFF;
+            font-weight: 600;
+        }
+
+        .button-group {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-rotate {
+            background: #444;
+            color: white;
+        }
+
+        .btn-rotate:active {
+            transform: scale(0.95);
+            background: #555;
+        }
+
+        .btn-save {
+            background: #34C759;
+            color: white;
+            padding: 16px;
+            font-size: 16px;
+            border-radius: 12px;
+            border: none;
+            width: 100%;
+            cursor: pointer;
+            font-weight: 600;
+            margin-top: 10px;
+        }
+
+        .btn-save:active {
+            transform: scale(0.98);
+            background: #2db64a;
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            background: #007AFF;
+            color: white;
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        .crop-overlay {
+            position: absolute;
+            border: 2px dashed #007AFF;
+            box-shadow: 0 0 0 9999px rgba(0,0,0,0.5);
+            cursor: move;
+            display: none;
+        }
+
+        .crop-handle {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background: #007AFF;
+            border: 2px solid white;
+            border-radius: 50%;
+        }
+
+        .crop-handle.tl { top: -10px; left: -10px; cursor: nw-resize; }
+        .crop-handle.tr { top: -10px; right: -10px; cursor: ne-resize; }
+        .crop-handle.bl { bottom: -10px; left: -10px; cursor: sw-resize; }
+        .crop-handle.br { bottom: -10px; right: -10px; cursor: se-resize; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📸 Fotoğraf Düzenle</h1>
+            <button class="btn-close" onclick="window.close()">✕ Kapat</button>
+        </div>
+
+        <div class="status" id="status">Fotoğrafı düzenleyin</div>
+
+        <div class="canvas-container" id="canvasContainer">
+            <canvas id="canvas"></canvas>
+            <div class="crop-overlay" id="cropOverlay">
+                <div class="crop-handle tl"></div>
+                <div class="crop-handle tr"></div>
+                <div class="crop-handle bl"></div>
+                <div class="crop-handle br"></div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <div class="button-group">
+                <button class="btn btn-rotate" onclick="rotate(-90)">↶ Sol</button>
+                <button class="btn btn-rotate" onclick="rotate(90)">↷ Sağ</button>
+                <button class="btn btn-rotate" onclick="toggleCrop()">✂️ Kırp</button>
+                <button class="btn btn-rotate" onclick="resetImage()">↺ Sıfırla</button>
+            </div>
+
+            <div class="control-group">
+                <label>💡 Parlaklık</label>
+                <div class="slider-container">
+                    <input type="range" id="brightness" min="-100" max="100" value="0" oninput="updateFilters()">
+                    <span class="slider-value" id="brightnessValue">0</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>◐ Kontrast</label>
+                <div class="slider-container">
+                    <input type="range" id="contrast" min="-100" max="100" value="0" oninput="updateFilters()">
+                    <span class="slider-value" id="contrastValue">0</span>
+                </div>
+            </div>
+
+            <div class="control-group">
+                <label>🎨 Doygunluk</label>
+                <div class="slider-container">
+                    <input type="range" id="saturation" min="-100" max="100" value="0" oninput="updateFilters()">
+                    <span class="slider-value" id="saturationValue">0</span>
+                </div>
+            </div>
+
+            <button class="btn-save" onclick="saveImage()">✅ Kaydet ve Forma Ekle</button>
+        </div>
+    </div>
+
+    <script>
+        let originalImage = null;
+        let canvas = document.getElementById('canvas');
+        let ctx = canvas.getContext('2d', { willReadFrequently: true });
+        let rotation = 0;
+        let cropMode = false;
+        let cropRect = null;
+
+        // Get image from URL parameter
+        window.onload = async function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const imageData = urlParams.get('image');
+            
+            if (!imageData) {
+                // Check if image was passed via window.opener
+                if (window.opener && window.opener.editorImageData) {
+                    loadImage(window.opener.editorImageData);
+                } else {
+                    alert('Fotoğraf bulunamadı!');
+                    window.close();
+                }
+            } else {
+                loadImage(decodeURIComponent(imageData));
+            }
+        };
+
+        function loadImage(dataURL) {
+            const img = new Image();
+            img.onload = function() {
+                originalImage = img;
+                resetImage();
+                document.getElementById('status').textContent = '✅ Fotoğraf yüklendi - Düzenleyebilirsiniz';
+            };
+            img.src = dataURL;
+        }
+
+        function resetImage() {
+            if (!originalImage) return;
+            
+            rotation = 0;
+            document.getElementById('brightness').value = 0;
+            document.getElementById('contrast').value = 0;
+            document.getElementById('saturation').value = 0;
+            document.getElementById('brightnessValue').textContent = '0';
+            document.getElementById('contrastValue').textContent = '0';
+            document.getElementById('saturationValue').textContent = '0';
+            cropMode = false;
+            cropRect = null;
+            document.getElementById('cropOverlay').style.display = 'none';
+            
+            drawImage();
+        }
+
+        function drawImage() {
+            if (!originalImage) return;
+
+            // Optimize for high quality
+            const maxWidth = 1920;
+            const maxHeight = 1920;
+            let width = originalImage.width;
+            let height = originalImage.height;
+
+            // Maintain aspect ratio
+            if (width > maxWidth || height > maxHeight) {
+                const ratio = Math.min(maxWidth / width, maxHeight / height);
+                width *= ratio;
+                height *= ratio;
+            }
+
+            // Adjust for rotation
+            if (rotation % 180 !== 0) {
+                canvas.width = height;
+                canvas.height = width;
+            } else {
+                canvas.width = width;
+                canvas.height = height;
+            }
+
+            ctx.save();
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Rotate
+            ctx.translate(canvas.width / 2, canvas.height / 2);
+            ctx.rotate((rotation * Math.PI) / 180);
+            ctx.translate(-width / 2, -height / 2);
+            
+            // Draw image
+            ctx.drawImage(originalImage, 0, 0, width, height);
+            ctx.restore();
+
+            // Apply filters
+            updateFilters();
+        }
+
+        function rotate(deg) {
+            rotation = (rotation + deg) % 360;
+            drawImage();
+        }
+
+        function updateFilters() {
+            const brightness = parseInt(document.getElementById('brightness').value);
+            const contrast = parseInt(document.getElementById('contrast').value);
+            const saturation = parseInt(document.getElementById('saturation').value);
+
+            document.getElementById('brightnessValue').textContent = brightness;
+            document.getElementById('contrastValue').textContent = contrast;
+            document.getElementById('saturationValue').textContent = saturation;
+
+            // Get current image data
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+
+            // Apply filters to each pixel
+            for (let i = 0; i < data.length; i += 4) {
+                let r = data[i];
+                let g = data[i + 1];
+                let b = data[i + 2];
+
+                // Brightness
+                r += brightness * 2.55;
+                g += brightness * 2.55;
+                b += brightness * 2.55;
+
+                // Contrast
+                const factor = (259 * (contrast + 255)) / (255 * (259 - contrast));
+                r = factor * (r - 128) + 128;
+                g = factor * (g - 128) + 128;
+                b = factor * (b - 128) + 128;
+
+                // Saturation (simplified)
+                const gray = 0.2989 * r + 0.5870 * g + 0.1140 * b;
+                const satFactor = (saturation + 100) / 100;
+                r = gray + (r - gray) * satFactor;
+                g = gray + (g - gray) * satFactor;
+                b = gray + (b - gray) * satFactor;
+
+                // Clamp values
+                data[i] = Math.max(0, Math.min(255, r));
+                data[i + 1] = Math.max(0, Math.min(255, g));
+                data[i + 2] = Math.max(0, Math.min(255, b));
+            }
+
+            ctx.putImageData(imageData, 0, 0);
+        }
+
+        function toggleCrop() {
+            cropMode = !cropMode;
+            const overlay = document.getElementById('cropOverlay');
+            
+            if (cropMode) {
+                // Show crop overlay (80% of canvas)
+                const margin = 0.1;
+                cropRect = {
+                    x: canvas.width * margin,
+                    y: canvas.height * margin,
+                    w: canvas.width * (1 - 2 * margin),
+                    h: canvas.height * (1 - 2 * margin)
+                };
+                updateCropOverlay();
+                overlay.style.display = 'block';
+                document.getElementById('status').textContent = '✂️ Kırpma alanını ayarlayın';
+            } else {
+                overlay.style.display = 'none';
+                document.getElementById('status').textContent = 'Fotoğrafı düzenleyin';
+            }
+        }
+
+        function updateCropOverlay() {
+            const overlay = document.getElementById('cropOverlay');
+            const container = document.getElementById('canvasContainer');
+            const canvasRect = canvas.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            
+            const scaleX = canvasRect.width / canvas.width;
+            const scaleY = canvasRect.height / canvas.height;
+            
+            overlay.style.left = (canvasRect.left - containerRect.left + cropRect.x * scaleX) + 'px';
+            overlay.style.top = (canvasRect.top - containerRect.top + cropRect.y * scaleY) + 'px';
+            overlay.style.width = (cropRect.w * scaleX) + 'px';
+            overlay.style.height = (cropRect.h * scaleY) + 'px';
+        }
+
+        async function saveImage() {
+            document.getElementById('status').textContent = '⏳ Sıkıştırılıyor...';
+            
+            let finalCanvas = canvas;
+            
+            // Apply crop if active
+            if (cropMode && cropRect) {
+                const cropCanvas = document.createElement('canvas');
+                cropCanvas.width = cropRect.w;
+                cropCanvas.height = cropRect.h;
+                const cropCtx = cropCanvas.getContext('2d');
+                cropCtx.drawImage(canvas, cropRect.x, cropRect.y, cropRect.w, cropRect.h, 0, 0, cropRect.w, cropRect.h);
+                finalCanvas = cropCanvas;
+            }
+
+            // High quality compression
+            let quality = 0.92;
+            let dataURL = finalCanvas.toDataURL('image/jpeg', quality);
+            
+            // Target 800KB max (better quality than before)
+            const targetSize = 800 * 1024;
+            while (dataURL.length > targetSize && quality > 0.7) {
+                quality -= 0.05;
+                dataURL = finalCanvas.toDataURL('image/jpeg', quality);
+            }
+
+            const sizeKB = Math.round(dataURL.length / 1024);
+            console.log('Final size:', sizeKB, 'KB, Quality:', quality);
+
+            // Send back to parent
+            if (window.opener) {
+                window.opener.postMessage({
+                    type: 'editedPhoto',
+                    data: dataURL,
+                    size: sizeKB
+                }, '*');
+                
+                document.getElementById('status').textContent = '✅ Kaydedildi! Pencere kapanıyor...';
+                setTimeout(() => window.close(), 500);
+            } else {
+                alert('Ana pencere bulunamadı!');
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (cropMode) updateCropOverlay();
+        });
+    </script>
+</body>
+</html>
