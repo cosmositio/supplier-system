@@ -1406,6 +1406,19 @@
                     <div style="color: #999; font-size: 0.85em; margin-top: 8px;">(.xlsx, .xls)</div>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(event)">
                 </div>
+                <div style="margin-top: 15px; padding: 12px; background: #f0f7ff; border-radius: 8px; border: 2px solid #2196F3;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; color: #1976D2;">
+                        <input type="checkbox" id="saveSuppliersCheckbox" checked style="width: 20px; height: 20px; cursor: pointer;">
+                        <span>📋 Tedarikçi listesini COA Arşiv için indir</span>
+                    </label>
+                    <small style="color: #666; margin-left: 30px; display: block; margin-top: 5px;">Excel yüklendiğinde JSON dosyası otomatik indirilir</small>
+                    <button type="button" id="downloadSupplierBtn" onclick="downloadSupplierListJSON()" style="margin-top: 10px; margin-left: 30px; background: linear-gradient(135deg, #2d5a3d 0%, #4a8f5c 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: none;">
+                        💾 Tedarikçi Listesini İndir (JSON)
+                    </button>
+                    <button type="button" onclick="createMobileCOALink()" style="margin-top: 10px; margin-left: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                        ❓ Mobilde Nasıl Kullanılır?
+                    </button>
+                </div>
             </div>
 
             <div class="upload-section" id="secondUploadSection" style="display: none; margin: 0;">

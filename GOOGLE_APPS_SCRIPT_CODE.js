@@ -208,18 +208,12 @@ function createResponse(result, callback) {
     // JSONP response
     const response = ContentService.createTextOutput(callback + '(' + output + ')');
     response.setMimeType(ContentService.MimeType.JAVASCRIPT);
-    response.setHeader('Access-Control-Allow-Origin', '*');
-    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return response;
   }
   
   // JSON response
   const response = ContentService.createTextOutput(output);
   response.setMimeType(ContentService.MimeType.JSON);
-  response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   return response;
 }
 
@@ -790,10 +784,9 @@ function getSheet() {
     sheet.setColumnWidth(2, 150); // supplier
     sheet.setColumnWidth(3, 120); // materialCode
     sheet.setColumnWidth(4, 100); // deliveryDate
-    sheet.setColumnWidth(5, 120); // deliveryNo
-    sheet.setColumnWidth(6, 100); // lotNumber
-    sheet.setColumnWidth(7, 200); // notes
-    sheet.setColumnWidth(8, 150); // location
+    sheet.setColumnWidth(5, 100); // lotNumber
+    sheet.setColumnWidth(6, 200); // notes
+    sheet.setColumnWidth(7, 150); // location
     sheet.setColumnWidth(11, 300); // fileUrl
     
     console.log('Header\'lar eklendi/güncellendi: ' + headers.join(', '));
