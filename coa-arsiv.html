@@ -1176,9 +1176,9 @@
                             console.log(`Bağlantı denemesi ${currentRetry}/${retries}...`);
                             tryConnect();
                         } else {
-                            reject(new Error('Timeout - Tüm denemeler başarısız'));
+                            reject(new Error('Bağlantı kurulamadı. Google Apps Script URL\'ini kontrol edin.'));
                         }
-                    }, 30000); // 30 saniye timeout (büyük dosyalar için)
+                    }, 45000); // 45 saniye timeout (büyük dosyalar için)
                     
                     function cleanup() {
                         clearTimeout(timeout);
@@ -1418,6 +1418,7 @@
                     supplier: record.supplier,
                     materialCode: record.materialCode,
                     deliveryDate: record.deliveryDate,
+                    deliveryNo: record.deliveryNo || '',
                     lotNumber: record.lotNumber || '',
                     location: record.location || '',
                     notes: record.notes || '',
