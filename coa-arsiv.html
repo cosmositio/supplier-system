@@ -878,15 +878,31 @@
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
                         <small style="color:#666; font-size:0.85em; flex: 1; min-width: 200px;">Ana sayfada Excel yükleyince tedarikçiler otomatik gelir</small>
                         <label for="supplierFileInput" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; cursor: pointer; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: all 0.3s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                            📂 JSON Yükle
+                            📂 Tedarikçi JSON
                         </label>
                         <input type="file" id="supplierFileInput" accept=".json" onchange="loadSupplierJSON(event)" style="display: none;">
                     </div>
                 </div>
                 
                 <div class="form-group">
-                    <label>Hammadde Kodu *</label>
-                    <input type="text" id="materialCode" placeholder="Örn: K015120000STD000">
+                    <label>Hammadde Kodu * <span id="materialCount" style="font-size: 0.8em; color: #666;"></span></label>
+                    <div class="supplier-dropdown-wrapper" style="position: relative;">
+                        <input type="text" id="materialCode" placeholder="🔍 Hammadde ara veya yazın..." 
+                               autocomplete="off" 
+                               oninput="filterMaterials(this.value)" 
+                               onfocus="showMaterialDropdown()" 
+                               style="width: 100%;">
+                        <div id="materialDropdown" class="supplier-dropdown-list" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 0 0 8px 8px; max-height: 250px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+                            <div style="padding: 8px; background: #f8f9fa; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
+                                <span id="materialDropdownCount" style="font-size: 0.85em; color: #666;">0 hammadde</span>
+                                <label for="materialFileInput" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.75em; cursor: pointer; font-weight: 600;">
+                                    📂 Hammadde JSON
+                                </label>
+                                <input type="file" id="materialFileInput" accept=".json" onchange="loadMaterialJSON(event)" style="display: none;">
+                            </div>
+                            <div id="materialDropdownItems"></div>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="form-group">
@@ -1017,6 +1033,7 @@
         // ==================== Global Variables ====================
         let coaData = [];
         let suppliers = [];
+        let materials = []; // Hammadde listesi
         let selectedSuppliers = new Set(); // Seçili tedarikçiler
         let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbzlZBmNGbsQTDLBqGkDto3FWDb26Jc4lk2OhER5OhgmmU1QiPjgdi27goEVTbhqlDFIVw/exec';
         let selectedFile = null;
@@ -1107,6 +1124,9 @@
             
             // Load suppliers from localStorage (from index.html)
             loadSuppliers();
+            
+            // Load materials from localStorage
+            loadMaterials();
             
             // İlk yüklemede localStorage'dan yükle (hızlı başlangıç)
             loadFromLocalStorage();
@@ -2204,6 +2224,142 @@
                 text.textContent = `${selectedSuppliers.size} tedarikçi seçili`;
             }
         }
+        
+        // ==================== Material Functions ====================
+        function loadMaterials() {
+            const savedMaterials = localStorage.getItem('coa_materials');
+            if (savedMaterials) {
+                try {
+                    materials = JSON.parse(savedMaterials);
+                    console.log('✅ Hammadde listesi yüklendi:', materials.length);
+                    updateMaterialDropdown();
+                } catch (e) {
+                    console.error('Hammadde parse hatası:', e);
+                    materials = [];
+                }
+            }
+        }
+        
+        function saveMaterials() {
+            localStorage.setItem('coa_materials', JSON.stringify(materials));
+            console.log('💾 Hammadde listesi kaydedildi');
+        }
+        
+        function loadMaterialJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const jsonData = JSON.parse(e.target.result);
+                    
+                    // Veri formatını kontrol et
+                    if (Array.isArray(jsonData)) {
+                        materials = jsonData;
+                    } else if (jsonData.materials && Array.isArray(jsonData.materials)) {
+                        materials = jsonData.materials;
+                    } else {
+                        throw new Error('Geçersiz JSON formatı. Array veya {materials: []} bekleniyor.');
+                    }
+                    
+                    // Verileri localStorage'a kaydet
+                    saveMaterials();
+                    updateMaterialDropdown();
+                    
+                    showToast(`✅ ${materials.length} hammadde yüklendi!`, 'success');
+                    console.log('📦 Hammadde JSON yüklendi:', materials);
+                } catch (error) {
+                    console.error('JSON parse hatası:', error);
+                    showToast('❌ JSON dosyası okunamadı: ' + error.message, 'error');
+                }
+            };
+            reader.readAsText(file);
+            
+            // Input'u sıfırla (aynı dosya tekrar seçilebilsin)
+            event.target.value = '';
+        }
+        
+        function showMaterialDropdown() {
+            const dropdown = document.getElementById('materialDropdown');
+            dropdown.style.display = 'block';
+            updateMaterialDropdown();
+        }
+        
+        function hideMaterialDropdown() {
+            setTimeout(() => {
+                const dropdown = document.getElementById('materialDropdown');
+                dropdown.style.display = 'none';
+            }, 200);
+        }
+        
+        function filterMaterials(searchText) {
+            showMaterialDropdown();
+            updateMaterialDropdown(searchText);
+        }
+        
+        function updateMaterialDropdown(filterText = '') {
+            const itemsContainer = document.getElementById('materialDropdownItems');
+            const countElement = document.getElementById('materialDropdownCount');
+            const materialCountLabel = document.getElementById('materialCount');
+            
+            if (!itemsContainer) return;
+            
+            const searchTerm = filterText.toLowerCase();
+            const filtered = materials.filter(m => {
+                const code = (m.code || m.stockCode || m.stokKodu || '').toLowerCase();
+                const name = (m.name || m.stockName || m.stokAdı || '').toLowerCase();
+                return code.includes(searchTerm) || name.includes(searchTerm);
+            });
+            
+            itemsContainer.innerHTML = '';
+            
+            if (filtered.length === 0 && materials.length === 0) {
+                itemsContainer.innerHTML = '<div style="padding: 15px; text-align: center; color: #999;">📦 Hammadde listesi boş<br><small>JSON dosyası yükleyin</small></div>';
+                countElement.textContent = '0 hammadde';
+                materialCountLabel.innerHTML = '<span style="color: #f44336;">(⚠️ Liste boş)</span>';
+                return;
+            }
+            
+            if (filtered.length === 0) {
+                itemsContainer.innerHTML = '<div style="padding: 12px; text-align: center; color: #666;">🔍 Sonuç bulunamadı</div>';
+                countElement.textContent = '0 sonuç';
+                return;
+            }
+            
+            countElement.textContent = `${filtered.length} hammadde`;
+            materialCountLabel.innerHTML = `<span style="color: #4CAF50;">(📦 ${materials.length} hammadde)</span>`;
+            
+            filtered.forEach(material => {
+                const code = material.code || material.stockCode || material.stokKodu || '';
+                const name = material.name || material.stockName || material.stokAdı || '';
+                const displayText = `${code} - ${name}`;
+                
+                const item = document.createElement('div');
+                item.className = 'supplier-dropdown-item';
+                item.textContent = displayText;
+                item.onclick = () => selectMaterial(code, name);
+                itemsContainer.appendChild(item);
+            });
+        }
+        
+        function selectMaterial(code, name) {
+            const input = document.getElementById('materialCode');
+            input.value = `${code} - ${name}`;
+            hideMaterialDropdown();
+        }
+        
+        // Dropdown dışına tıklanınca kapat
+        document.addEventListener('click', function(e) {
+            const materialWrapper = document.querySelector('.supplier-dropdown-wrapper');
+            const materialDropdown = document.getElementById('materialDropdown');
+            
+            if (materialWrapper && !materialWrapper.contains(e.target)) {
+                if (materialDropdown) {
+                    materialDropdown.style.display = 'none';
+                }
+            }
+        });
         
         // ==================== File Upload ====================
         function initUploadArea() {
