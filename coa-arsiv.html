@@ -1627,22 +1627,28 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // PDF ve çok sayfalı dokümanlar için YÜKSEK KALİTE (500KB)
+                        // PDF ve çok sayfalı dokümanlar için ÇOK YÜKSEK KALİTE (2MB - minimal sıkıştırma)
                         // Tek sayfa image'ler için orta kalite (300KB)
                         const isPDF = record.fileType && record.fileType.includes('pdf');
                         const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
+                        const isMultiPage = record.fileData.length > 3000000; // 3MB'dan büyükse çok sayfalı
                         
                         let targetSize;
-                        if (isPDF || record.fileData.length > 3000000) { // 3MB'dan büyükse çok sayfalı olabilir
-                            targetSize = 500; // PDF ve büyük dosyalar için 500KB (yüksek kalite)
-                            console.log('📄 PDF/Çok sayfalı doküman - Yüksek kalite (500KB)');
+                        let uploadData;
+                        
+                        if (isPDF || isMultiPage) {
+                            // PDF ve çok sayfalı için 2MB hedef (MINIMAL sıkıştırma)
+                            targetSize = 2000; // 2MB - neredeyse orijinal kalite
+                            console.log('📄 PDF/Çok sayfalı doküman - MINIMAL sıkıştırma (2MB hedef)');
+                            uploadData = await compressForSheets(record.fileData, targetSize);
                         } else {
-                            targetSize = isMobile ? 250 : 300; // Tek sayfa için 250-300KB
+                            // Tek sayfa için 300KB
+                            targetSize = isMobile ? 250 : 300;
                             console.log('📷 Tek sayfa image - Orta kalite (' + targetSize + 'KB)');
+                            uploadData = await compressForSheets(record.fileData, targetSize);
                         }
                         
-                        const compressedData = await compressForSheets(record.fileData, targetSize);
-                        console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
+                        console.log('Sıkıştırılmış boyut:', Math.round(uploadData.length / 1024), 'KB');
                         
                         // fetch() ile POST (XMLHttpRequest CORS problemi yaratıyor)
                         let lastError = null;
@@ -1659,7 +1665,7 @@
                                 // fetch() ile POST - CORS uyumlu
                                 const formData = new URLSearchParams();
                                 formData.append('action', 'uploadFile');
-                                formData.append('fileData', compressedData);
+                                formData.append('fileData', uploadData);
                                 formData.append('fileName', record.fileName);
                                 formData.append('mimeType', record.fileType || 'image/jpeg');
                                 
@@ -2098,12 +2104,16 @@
                     let height = img.height;
                     const maxSize = maxSizeKB * 1024;
                     
-                    // Hedef boyuta göre başlangıç boyutu ayarla - YÜKSEK KALİTE
+                    // Hedef boyuta göre başlangıç boyutu ayarla - ÇOK YÜKSEK KALİTE
                     let maxDim;
-                    if (maxSizeKB >= 500) {
-                        maxDim = 3000; // 500KB+ için çok yüksek çözünürlük (PDF/çok sayfalı)
+                    if (maxSizeKB >= 2000) {
+                        maxDim = 4500; // 2MB+ için ULTRA yüksek çözünürlük (minimal kayıp)
+                    } else if (maxSizeKB >= 1000) {
+                        maxDim = 4000; // 1MB+ için çok yüksek çözünürlük
+                    } else if (maxSizeKB >= 500) {
+                        maxDim = 3000; // 500KB+ için yüksek çözünürlük
                     } else if (maxSizeKB >= 300) {
-                        maxDim = 2400; // 300KB+ için yüksek çözünürlük
+                        maxDim = 2400;
                     } else if (maxSizeKB >= 200) {
                         maxDim = 2000;
                     } else if (maxSizeKB >= 100) {
@@ -2112,6 +2122,7 @@
                         maxDim = 1000;
                     } else {
                         maxDim = 600;
+                    }
                     }
                     
                     if (width > maxDim || height > maxDim) {
@@ -2130,12 +2141,16 @@
                     ctx.fillRect(0, 0, width, height);
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    // Kalite başlangıcı - YÜKSEK KALİTE
+                    // Kalite başlangıcı - ÇOK YÜKSEK KALİTE
                     let quality;
-                    if (maxSizeKB >= 500) {
-                        quality = 0.95; // 500KB+ için çok yüksek kalite
+                    if (maxSizeKB >= 2000) {
+                        quality = 0.98; // 2MB+ için ULTRA yüksek kalite (minimal kayıp)
+                    } else if (maxSizeKB >= 1000) {
+                        quality = 0.96; // 1MB+ için çok yüksek kalite
+                    } else if (maxSizeKB >= 500) {
+                        quality = 0.95; // 500KB+ için yüksek kalite
                     } else if (maxSizeKB >= 300) {
-                        quality = 0.92; // 300KB için yüksek kalite
+                        quality = 0.92;
                     } else if (maxSizeKB >= 200) {
                         quality = 0.90;
                     } else if (maxSizeKB >= 100) {
@@ -2148,9 +2163,10 @@
                     
                     let result = canvas.toDataURL('image/jpeg', quality);
                     
-                    // Boyut büyükse kaliteyi düşür
-                    while (result.length > maxSize && quality > 0.3) {
-                        quality -= 0.1;
+                    // Boyut büyükse kaliteyi ÇOK AZ düşür (2MB hedef için)
+                    const minQuality = maxSizeKB >= 2000 ? 0.90 : (maxSizeKB >= 1000 ? 0.85 : 0.3);
+                    while (result.length > maxSize && quality > minQuality) {
+                        quality -= 0.05; // Daha yavaş düşür
                         result = canvas.toDataURL('image/jpeg', quality);
                     }
                     
