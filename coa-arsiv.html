@@ -740,6 +740,84 @@
         .status-dot.connected {
             background: #28a745;
         }
+        
+        /* Tedarikçi dropdown stilleri */
+        .supplier-input-container {
+            position: relative;
+        }
+        
+        .supplier-input-wrapper {
+            position: relative;
+        }
+        
+        .supplier-dropdown-arrow {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            pointer-events: none;
+            color: #999;
+            font-size: 0.8em;
+        }
+        
+        #supplierInput {
+            padding-right: 35px;
+        }
+        
+        .supplier-dropdown-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1000;
+            display: none;
+        }
+        
+        .supplier-dropdown-list.active {
+            display: block;
+        }
+        
+        .supplier-dropdown-item {
+            padding: 12px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .supplier-dropdown-item:hover {
+            background: #f0f7ff;
+        }
+        
+        .supplier-dropdown-item.selected {
+            background: #e3f2fd;
+            font-weight: 600;
+        }
+        
+        .supplier-dropdown-empty {
+            padding: 20px;
+            text-align: center;
+            color: #999;
+        }
+        
+        .supplier-dropdown-count {
+            padding: 8px 15px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e0e0e0;
+            font-size: 0.85em;
+            color: #666;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
     </style>
 </head>
 <body>
@@ -782,8 +860,21 @@
                 
                 <div class="form-group">
                     <label>Tedarikçi Firma * <span id="supplierCount" style="color:#2196F3; font-weight:normal; font-size:0.9em;"></span></label>
-                    <input type="text" id="supplierInput" list="supplierList" placeholder="Tedarikçi adı yazın veya seçin...">
-                    <datalist id="supplierList"></datalist>
+                    <div class="supplier-input-container">
+                        <div class="supplier-input-wrapper">
+                            <input type="text" 
+                                   id="supplierInput" 
+                                   placeholder="Tedarikçi ara veya yazın..." 
+                                   autocomplete="off"
+                                   onfocus="showSupplierDropdown()"
+                                   oninput="filterSupplierDropdown()">
+                            <span class="supplier-dropdown-arrow">▼</span>
+                            <div class="supplier-dropdown-list" id="supplierDropdownList">
+                                <div class="supplier-dropdown-count" id="supplierDropdownCount"></div>
+                                <div id="supplierDropdownItems"></div>
+                            </div>
+                        </div>
+                    </div>
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
                         <small style="color:#666; font-size:0.85em; flex: 1; min-width: 200px;">Ana sayfada Excel yükleyince tedarikçiler otomatik gelir</small>
                         <label for="supplierFileInput" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; cursor: pointer; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: all 0.3s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
@@ -1931,32 +2022,32 @@
         }
         
         function updateSupplierDropdowns() {
-            const datalist = document.getElementById('supplierList');
             const optionsContainer = document.getElementById('supplierMultiselectOptions');
             const countSpan = document.getElementById('supplierCount');
             
             // Clear existing options
-            datalist.innerHTML = '';
-            optionsContainer.innerHTML = '';
-            
-            suppliers.forEach(s => {
-                // Datalist için (form input)
-                datalist.innerHTML += `<option value="${s}">`;
+            if (optionsContainer) {
+                optionsContainer.innerHTML = '';
                 
-                // Multiselect için
-                const isChecked = selectedSuppliers.has(s);
-                const option = document.createElement('div');
-                option.className = 'multiselect-option';
-                option.innerHTML = `
-                    <input type="checkbox" id="supplier_${s.replace(/\s+/g, '_')}" 
-                           ${isChecked ? 'checked' : ''} 
-                           onchange="toggleSupplier('${s.replace(/'/g, "\\'")}')">
-                    <label for="supplier_${s.replace(/\s+/g, '_')}">${s}</label>
-                `;
-                optionsContainer.appendChild(option);
-            });
+                suppliers.forEach(s => {
+                    // Multiselect için
+                    const isChecked = selectedSuppliers.has(s);
+                    const option = document.createElement('div');
+                    option.className = 'multiselect-option';
+                    option.innerHTML = `
+                        <input type="checkbox" id="supplier_${s.replace(/\s+/g, '_')}" 
+                               ${isChecked ? 'checked' : ''} 
+                               onchange="toggleSupplier('${s.replace(/'/g, "\\'")}')">
+                        <label for="supplier_${s.replace(/\s+/g, '_')}">${s}</label>
+                    `;
+                    optionsContainer.appendChild(option);
+                });
+                
+                updateSupplierMultiselectText();
+            }
             
-            updateSupplierMultiselectText();
+            // Form input dropdown'ı güncelle
+            updateSupplierInputDropdown();
             
             // Tedarikçi sayısını göster
             if (countSpan) {
@@ -1969,6 +2060,74 @@
                 }
             }
         }
+        
+        // Tedarikçi input dropdown'ını güncelle
+        function updateSupplierInputDropdown(filterText = '') {
+            const itemsContainer = document.getElementById('supplierDropdownItems');
+            const countElement = document.getElementById('supplierDropdownCount');
+            
+            if (!itemsContainer) return;
+            
+            const searchTerm = filterText.toLowerCase();
+            const filtered = suppliers.filter(s => s.toLowerCase().includes(searchTerm));
+            
+            itemsContainer.innerHTML = '';
+            
+            if (filtered.length === 0) {
+                itemsContainer.innerHTML = '<div class="supplier-dropdown-empty">🔍 Tedarikçi bulunamadı</div>';
+                countElement.textContent = '0 tedarikçi';
+                return;
+            }
+            
+            countElement.textContent = `${filtered.length} tedarikçi`;
+            
+            filtered.forEach(s => {
+                const item = document.createElement('div');
+                item.className = 'supplier-dropdown-item';
+                item.textContent = s;
+                item.onclick = () => selectSupplier(s);
+                itemsContainer.appendChild(item);
+            });
+        }
+        
+        // Dropdown'ı göster
+        function showSupplierDropdown() {
+            const dropdown = document.getElementById('supplierDropdownList');
+            const input = document.getElementById('supplierInput');
+            
+            if (suppliers.length === 0) {
+                return;
+            }
+            
+            updateSupplierInputDropdown(input.value);
+            dropdown.classList.add('active');
+        }
+        
+        // Dropdown'da arama yap
+        function filterSupplierDropdown() {
+            const input = document.getElementById('supplierInput');
+            updateSupplierInputDropdown(input.value);
+            showSupplierDropdown();
+        }
+        
+        // Tedarikçi seç
+        function selectSupplier(supplierName) {
+            const input = document.getElementById('supplierInput');
+            const dropdown = document.getElementById('supplierDropdownList');
+            
+            input.value = supplierName;
+            dropdown.classList.remove('active');
+        }
+        
+        // Dropdown dışına tıklanınca kapat
+        document.addEventListener('click', (e) => {
+            const dropdown = document.getElementById('supplierDropdownList');
+            const input = document.getElementById('supplierInput');
+            
+            if (dropdown && input && !e.target.closest('.supplier-input-container')) {
+                dropdown.classList.remove('active');
+            }
+        });
         
         function toggleSupplier(supplier) {
             if (selectedSuppliers.has(supplier)) {
@@ -2355,6 +2514,7 @@
                     fileData: uploadResult ? selectedFileData : existingRecord.fileData,
                     fileUrl: uploadResult ? uploadResult.viewUrl : existingRecord.fileUrl,
                     driveFileId: uploadResult ? uploadResult.fileId : existingRecord.driveFileId,
+                    fileSize: uploadResult ? uploadResult.fileSize : existingRecord.fileSize, // Gerçek boyut
                     createdAt: existingRecord.createdAt,
                     updatedAt: new Date().toISOString()
                 };
@@ -2390,6 +2550,42 @@
                 return;
             }
             
+            // Önce Drive'a yükle
+            showToast('☁️ Dosya Drive\'a yükleniyor...', 'info');
+            let uploadResult = null;
+            
+            try {
+                const compressedData = await compressForSheets(selectedFileData, 250);
+                console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
+                
+                const formData = new URLSearchParams();
+                formData.append('action', 'uploadFile');
+                formData.append('fileData', compressedData);
+                formData.append('fileName', selectedFile.name);
+                formData.append('mimeType', selectedFile.type || 'image/jpeg');
+                
+                const uploadResponse = await fetch(googleScriptUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded'
+                    },
+                    body: formData.toString()
+                });
+                
+                uploadResult = await uploadResponse.json();
+                console.log('Drive upload sonucu:', uploadResult);
+                
+                if (!uploadResult || !uploadResult.success) {
+                    showToast('❌ Dosya yüklenemedi: ' + (uploadResult?.error || 'Bilinmeyen hata'), 'error');
+                    return;
+                }
+                showToast('✅ Dosya Drive\'a yüklendi!', 'success');
+            } catch (uploadErr) {
+                console.error('Drive upload hatası:', uploadErr);
+                showToast('❌ Dosya yükleme hatası: ' + uploadErr.message, 'error');
+                return;
+            }
+            
             const record = {
                 id: 'coa_' + Date.now(),
                 supplier: supplier,
@@ -2398,9 +2594,12 @@
                 lotNumber: lotNumber,
                 location: location,
                 notes: notes,
-                fileName: selectedFile.name,
+                fileName: uploadResult.fileName,
                 fileType: selectedFile.type,
                 fileData: selectedFileData,
+                fileUrl: uploadResult.viewUrl,
+                driveFileId: uploadResult.fileId,
+                fileSize: uploadResult.fileSize, // Gerçek dosya boyutu (bytes)
                 createdAt: new Date().toISOString()
             };
             
@@ -2659,10 +2858,13 @@
             const thisMonthCount = coaData.filter(c => c.deliveryDate?.startsWith(thisMonth)).length;
             document.getElementById('statThisMonth').textContent = thisMonthCount;
             
-            // Toplam dosya boyutunu hesapla
+            // Toplam dosya boyutunu hesapla - önce fileSize kullan, yoksa fileData'dan hesapla
             let totalBytes = 0;
             coaData.forEach(c => {
-                if (c.fileData) {
+                if (c.fileSize) {
+                    // Drive'dan gelen gerçek dosya boyutu (bytes)
+                    totalBytes += parseInt(c.fileSize);
+                } else if (c.fileData) {
                     // Base64 boyutunu gerçek boyuta çevir (base64 %33 daha büyük)
                     const base64Length = c.fileData.length;
                     const realSize = Math.ceil(base64Length * 0.75);
