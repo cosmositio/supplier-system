@@ -820,6 +820,157 @@
             top: 0;
             z-index: 1;
         }
+
+        /* Scanner Modal */
+        .scanner-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.95);
+            z-index: 10000;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .scanner-modal.active {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scanner-container {
+            width: 100%;
+            max-width: 600px;
+            background: white;
+            border-radius: 16px;
+            padding: 20px;
+            position: relative;
+        }
+
+        .scanner-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .scanner-header h2 {
+            margin: 0;
+            font-size: 20px;
+            color: #333;
+        }
+
+        .scanner-close {
+            background: #f44336;
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            font-size: 24px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .scanner-video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .scanner-video,
+        .scanner-canvas {
+            width: 100%;
+            display: block;
+        }
+
+        .scanner-canvas {
+            display: none;
+        }
+
+        .scanner-controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        .scanner-btn {
+            padding: 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .scanner-btn-capture {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+            color: white;
+            grid-column: 1 / -1;
+        }
+
+        .scanner-btn-process {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .scanner-btn-use {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        .scanner-status {
+            text-align: center;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: 500;
+        }
+
+        .scanner-status.info {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .scanner-status.success {
+            background: #e8f5e9;
+            color: #388e3c;
+        }
+
+        .scanner-options {
+            display: grid;
+            gap: 10px;
+            margin: 15px 0;
+        }
+
+        .scanner-option {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f5f7fa;
+            border-radius: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .scanner-modal {
+                padding: 10px;
+            }
+
+            .scanner-container {
+                padding: 15px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -936,7 +1087,15 @@
                 
                 <div class="form-group">
                     <label>Sertifika Dosyası *</label>
-                    <div class="upload-area" id="uploadArea">
+                    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                        <button type="button" class="btn btn-secondary" onclick="openScanner()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            📷 Kamera ile Tara
+                        </button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            📁 Dosya Seç
+                        </button>
+                    </div>
+                    <div class="upload-area" id="uploadArea" style="display: none;">
                         <div class="upload-icon">📄</div>
                         <div class="upload-text">Fotoğraf veya PDF sürükleyin<br>veya tıklayarak seçin</div>
                         <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none">
@@ -3500,6 +3659,287 @@
         document.getElementById('imageModal').addEventListener('click', (e) => {
             if (e.target.id === 'imageModal') closeModal();
         });
+
+        // ==================== KAMERA TARAYICI ====================
+        
+        let scannerStream = null;
+        let scannerCapturedData = null;
+        
+        function openScanner() {
+            const modal = document.getElementById('scannerModal');
+            modal.classList.add('active');
+            startScannerCamera();
+        }
+        
+        function closeScanner() {
+            const modal = document.getElementById('scannerModal');
+            modal.classList.remove('active');
+            
+            if (scannerStream) {
+                scannerStream.getTracks().forEach(track => track.stop());
+                scannerStream = null;
+            }
+            
+            const video = document.getElementById('scannerVideo');
+            const canvas = document.getElementById('scannerCanvas');
+            video.style.display = 'block';
+            canvas.style.display = 'none';
+            
+            document.getElementById('scannerCaptureBtn').style.display = 'block';
+            document.getElementById('scannerProcessBtn').style.display = 'none';
+            document.getElementById('scannerUseBtn').style.display = 'none';
+        }
+        
+        async function startScannerCamera() {
+            try {
+                showScannerStatus('🔄 Kamera başlatılıyor...', 'info');
+                
+                const constraints = {
+                    video: {
+                        facingMode: 'environment',
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    }
+                };
+
+                scannerStream = await navigator.mediaDevices.getUserMedia(constraints);
+                const video = document.getElementById('scannerVideo');
+                video.srcObject = scannerStream;
+                
+                video.onloadedmetadata = () => {
+                    video.play();
+                    showScannerStatus('✅ Belgeyi çerçeveleyin ve "Çek" butonuna basın', 'success');
+                };
+            } catch (error) {
+                console.error('Kamera hatası:', error);
+                showScannerStatus('❌ Kamera açılamadı: ' + error.message, 'error');
+            }
+        }
+        
+        function captureScannerImage() {
+            const video = document.getElementById('scannerVideo');
+            const canvas = document.getElementById('scannerCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            ctx.drawImage(video, 0, 0);
+            
+            scannerCapturedData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            
+            video.style.display = 'none';
+            canvas.style.display = 'block';
+            
+            document.getElementById('scannerCaptureBtn').style.display = 'none';
+            document.getElementById('scannerProcessBtn').style.display = 'block';
+            
+            showScannerStatus('✅ Görüntü yakalandı! "İşle ve Düzelt" butonuna basın', 'success');
+        }
+        
+        function processScannerImage() {
+            showScannerStatus('⚙️ Görüntü işleniyor ve düzeltiliyor...', 'info');
+            
+            const canvas = document.getElementById('scannerCanvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Auto perspective correction
+            const corners = detectDocumentCorners(scannerCapturedData, canvas.width, canvas.height);
+            
+            // Create output canvas with A4 aspect ratio
+            const outputCanvas = document.createElement('canvas');
+            const outputCtx = outputCanvas.getContext('2d');
+            const dstWidth = 1200;
+            const dstHeight = Math.round(dstWidth * 1.414); // A4
+            outputCanvas.width = dstWidth;
+            outputCanvas.height = dstHeight;
+            
+            // Perspective transform
+            perspectiveTransformSimple(scannerCapturedData, corners, outputCanvas, dstWidth, dstHeight);
+            
+            // Enhance image
+            enhanceDocument(outputCanvas);
+            
+            // Display result
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.width = outputCanvas.width;
+            canvas.height = outputCanvas.height;
+            ctx.drawImage(outputCanvas, 0, 0);
+            
+            document.getElementById('scannerProcessBtn').style.display = 'none';
+            document.getElementById('scannerUseBtn').style.display = 'block';
+            
+            showScannerStatus('✅ Görüntü düzeltildi! "Kullan" butonuna basın', 'success');
+        }
+        
+        function detectDocumentCorners(imageData, width, height) {
+            // Simplified corner detection - use image boundaries with margin
+            const margin = Math.min(width, height) * 0.05;
+            
+            return [
+                { x: margin, y: margin },
+                { x: width - margin, y: margin },
+                { x: width - margin, y: height - margin },
+                { x: margin, y: height - margin }
+            ];
+        }
+        
+        function perspectiveTransformSimple(srcImageData, srcCorners, dstCanvas, dstWidth, dstHeight) {
+            const src = srcImageData.data;
+            const srcWidth = srcImageData.width;
+            const srcHeight = srcImageData.height;
+            const ctx = dstCanvas.getContext('2d');
+            
+            const dstImageData = ctx.createImageData(dstWidth, dstHeight);
+            const dst = dstImageData.data;
+            
+            for (let y = 0; y < dstHeight; y++) {
+                for (let x = 0; x < dstWidth; x++) {
+                    const u = x / dstWidth;
+                    const v = y / dstHeight;
+                    
+                    // Bilinear interpolation
+                    const srcX = (1-u)*(1-v)*srcCorners[0].x + u*(1-v)*srcCorners[1].x +
+                                u*v*srcCorners[2].x + (1-u)*v*srcCorners[3].x;
+                    const srcY = (1-u)*(1-v)*srcCorners[0].y + u*(1-v)*srcCorners[1].y +
+                                u*v*srcCorners[2].y + (1-u)*v*srcCorners[3].y;
+                    
+                    const srcXi = Math.floor(srcX);
+                    const srcYi = Math.floor(srcY);
+                    
+                    if (srcXi >= 0 && srcXi < srcWidth && srcYi >= 0 && srcYi < srcHeight) {
+                        const srcIdx = (srcYi * srcWidth + srcXi) * 4;
+                        const dstIdx = (y * dstWidth + x) * 4;
+                        
+                        dst[dstIdx] = src[srcIdx];
+                        dst[dstIdx + 1] = src[srcIdx + 1];
+                        dst[dstIdx + 2] = src[srcIdx + 2];
+                        dst[dstIdx + 3] = 255;
+                    }
+                }
+            }
+            
+            ctx.putImageData(dstImageData, 0, 0);
+        }
+        
+        function enhanceDocument(canvas) {
+            const ctx = canvas.getContext('2d');
+            const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+            const data = imageData.data;
+            
+            // Auto-contrast
+            let min = 255, max = 0;
+            for (let i = 0; i < data.length; i += 4) {
+                const gray = (data[i] + data[i+1] + data[i+2]) / 3;
+                min = Math.min(min, gray);
+                max = Math.max(max, gray);
+            }
+            
+            const scale = 255 / (max - min + 1);
+            for (let i = 0; i < data.length; i += 4) {
+                data[i] = Math.min(255, Math.max(0, (data[i] - min) * scale));
+                data[i+1] = Math.min(255, Math.max(0, (data[i+1] - min) * scale));
+                data[i+2] = Math.min(255, Math.max(0, (data[i+2] - min) * scale));
+            }
+            
+            // Sharpen
+            const kernel = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+            const output = new Uint8ClampedArray(data);
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            for (let y = 1; y < height - 1; y++) {
+                for (let x = 1; x < width - 1; x++) {
+                    for (let c = 0; c < 3; c++) {
+                        let sum = 0;
+                        for (let ky = -1; ky <= 1; ky++) {
+                            for (let kx = -1; kx <= 1; kx++) {
+                                const idx = ((y + ky) * width + (x + kx)) * 4 + c;
+                                sum += data[idx] * kernel[(ky+1)*3 + (kx+1)];
+                            }
+                        }
+                        const idx = (y * width + x) * 4 + c;
+                        output[idx] = Math.min(255, Math.max(0, sum));
+                    }
+                }
+            }
+            
+            for (let i = 0; i < data.length; i++) {
+                data[i] = output[i];
+            }
+            
+            ctx.putImageData(imageData, 0, 0);
+        }
+        
+        async function useScannerImage() {
+            const canvas = document.getElementById('scannerCanvas');
+            const dataURL = canvas.toDataURL('image/jpeg', 0.92);
+            
+            // Convert to File object
+            const blob = await (await fetch(dataURL)).blob();
+            const file = new File([blob], 'scanned_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+            
+            // Use existing handleFile function
+            selectedFile = file;
+            selectedFileData = dataURL;
+            
+            const uploadArea = document.getElementById('uploadArea');
+            const preview = document.getElementById('filePreview');
+            
+            uploadArea.classList.add('has-file');
+            preview.innerHTML = '<img src="' + dataURL + '" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 10px;"><p style="margin-top: 10px; color: #4CAF50; font-weight: 600;">✅ Taranmış belge hazır</p>';
+            
+            closeScanner();
+            showToast('✅ Taranmış belge forma eklendi!', 'success');
+        }
+        
+        function showScannerStatus(message, type) {
+            const statusEl = document.getElementById('scannerStatus');
+            statusEl.textContent = message;
+            statusEl.className = 'scanner-status ' + type;
+        }
     </script>
+
+    <!-- Scanner Modal -->
+    <div id="scannerModal" class="scanner-modal">
+        <div class="scanner-container">
+            <div class="scanner-header">
+                <h2>📷 Belge Tarayıcı</h2>
+                <button class="scanner-close" onclick="closeScanner()">×</button>
+            </div>
+
+            <div id="scannerStatus" class="scanner-status info">
+                🔄 Kamera başlatılıyor...
+            </div>
+
+            <div class="scanner-video-container">
+                <video id="scannerVideo" class="scanner-video" autoplay playsinline></video>
+                <canvas id="scannerCanvas" class="scanner-canvas"></canvas>
+            </div>
+
+            <div class="scanner-controls">
+                <button id="scannerCaptureBtn" class="scanner-btn scanner-btn-capture" onclick="captureScannerImage()">
+                    📸 Çek
+                </button>
+                <button id="scannerProcessBtn" class="scanner-btn scanner-btn-process" onclick="processScannerImage()" style="display: none;">
+                    ✨ İşle ve Düzelt
+                </button>
+                <button id="scannerUseBtn" class="scanner-btn scanner-btn-use" onclick="useScannerImage()" style="display: none;">
+                    ✅ Kullan
+                </button>
+            </div>
+
+            <div class="scanner-options">
+                <div style="padding: 10px; background: #fff3cd; border-radius: 8px; font-size: 0.9em; color: #856404;">
+                    <strong>💡 İpuçları:</strong>
+                    <ul style="margin: 8px 0 0 20px; padding: 0;">
+                        <li>Belgeyi düz zemine koyun</li>
+                        <li>İyi ışıklandırılmış ortamda çekin</li>
+                        <li>Belgenin tamamı görünsün</li>
+                        <li>Gölge düşürmemeye çalışın</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
