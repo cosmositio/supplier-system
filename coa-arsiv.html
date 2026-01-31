@@ -1364,22 +1364,16 @@
                         const compressedData = await compressForSheets(record.fileData, 250);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        // Form-encoded POST (CORS preflight yok!)
-                        const formData = new URLSearchParams();
-                        formData.append('action', 'uploadFile');
-                        formData.append('fileData', compressedData);
-                        formData.append('fileName', record.fileName);
-                        formData.append('mimeType', record.fileType || 'image/jpeg');
+                        // JSONP ile upload (CORS yok!)
+                        const params = new URLSearchParams();
+                        params.append('action', 'uploadFile');
+                        params.append('fileData', compressedData);
+                        params.append('fileName', record.fileName);
+                        params.append('mimeType', record.fileType || 'image/jpeg');
                         
-                        const uploadResponse = await fetch(googleScriptUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            body: formData.toString()
-                        });
+                        const uploadUrl = googleScriptUrl + '?' + params.toString();
+                        const uploadResult = await jsonp(uploadUrl);
                         
-                        const uploadResult = await uploadResponse.json();
                         console.log('Drive upload sonucu:', uploadResult);
                         
                         if (uploadResult && uploadResult.success) {
@@ -2843,21 +2837,14 @@
                         const compressedData = await compressForSheets(selectedFileData, 250);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        const formData = new URLSearchParams();
-                        formData.append('action', 'uploadFile');
-                        formData.append('fileData', compressedData);
-                        formData.append('fileName', selectedFile.name);
-                        formData.append('mimeType', selectedFile.type || 'image/jpeg');
+                        const params = new URLSearchParams();
+                        params.append('action', 'uploadFile');
+                        params.append('fileData', compressedData);
+                        params.append('fileName', selectedFile.name);
+                        params.append('mimeType', selectedFile.type || 'image/jpeg');
                         
-                        const uploadResponse = await fetch(googleScriptUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            body: formData.toString()
-                        });
-                        
-                        uploadResult = await uploadResponse.json();
+                        const uploadUrl = googleScriptUrl + '?' + params.toString();
+                        uploadResult = await jsonp(uploadUrl);
                         console.log('Drive upload sonucu:', uploadResult);
                         
                         if (!uploadResult || !uploadResult.success) {
@@ -2931,21 +2918,14 @@
                 const compressedData = await compressForSheets(selectedFileData, 250);
                 console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                 
-                const formData = new URLSearchParams();
-                formData.append('action', 'uploadFile');
-                formData.append('fileData', compressedData);
-                formData.append('fileName', selectedFile.name);
-                formData.append('mimeType', selectedFile.type || 'image/jpeg');
+                const params = new URLSearchParams();
+                params.append('action', 'uploadFile');
+                params.append('fileData', compressedData);
+                params.append('fileName', selectedFile.name);
+                params.append('mimeType', selectedFile.type || 'image/jpeg');
                 
-                const uploadResponse = await fetch(googleScriptUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: formData.toString()
-                });
-                
-                uploadResult = await uploadResponse.json();
+                const uploadUrl = googleScriptUrl + '?' + params.toString();
+                uploadResult = await jsonp(uploadUrl);
                 console.log('Drive upload sonucu:', uploadResult);
                 
                 if (!uploadResult || !uploadResult.success) {
