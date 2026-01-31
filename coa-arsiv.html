@@ -1145,7 +1145,7 @@
                     <div class="upload-area" id="uploadArea" style="display: none;">
                         <div class="upload-icon">📄</div>
                         <div class="upload-text">Fotoğraf veya PDF sürükleyin<br>veya tıklayarak seçin</div>
-                        <input type="file" id="fileInput" accept="image/*,.pdf" style="display:none">
+                        <input type="file" id="fileInput" accept="image/*,.pdf,.xlsx,.xls,.docx,.doc" style="display:none">
                     </div>
                     <div id="filePreview"></div>
                 </div>
@@ -3152,6 +3152,26 @@
                     selectedFileData = e.target.result;
                     preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' (PDF - orjinal kalite)</div>';
                     showToast('✅ PDF hazır (orjinal kalite)', 'success');
+                };
+                reader.readAsDataURL(file);
+            }
+            // Excel dosyaları (.xlsx, .xls)
+            else if (file.type.includes('spreadsheet') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    selectedFileData = e.target.result;
+                    preview.innerHTML = '<div class="file-name" style="color:#107c41;">📊 ' + file.name + ' (Excel - orjinal)</div>';
+                    showToast('✅ Excel dosyası hazır', 'success');
+                };
+                reader.readAsDataURL(file);
+            }
+            // Word dosyaları (.docx, .doc)
+            else if (file.type.includes('wordprocessing') || file.name.endsWith('.docx') || file.name.endsWith('.doc')) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    selectedFileData = e.target.result;
+                    preview.innerHTML = '<div class="file-name" style="color:#2b579a;">📝 ' + file.name + ' (Word - orjinal)</div>';
+                    showToast('✅ Word dosyası hazır', 'success');
                 };
                 reader.readAsDataURL(file);
             }
