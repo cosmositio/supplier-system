@@ -1143,17 +1143,12 @@
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 const savedUrl = localStorage.getItem('google_script_url');
-                
                 if (savedUrl) {
                     document.getElementById('googleScriptUrl').value = savedUrl;
                     googleScriptUrl = savedUrl;
-                    console.log('📂 Kayıtlı URL yüklendi');
                     connectGoogleSheets(true);
-                } else {
-                    console.log('⚠️ Google Sheets URL bulunamadı. Lütfen ayarlardan bağlantı kurun.');
-                    document.getElementById('statusText').textContent = 'Bağlantı bekleniyor';
                 }
-            }, 500);
+            }, 100);
         });
         
         // ==================== JSONP Helper ====================
@@ -1162,51 +1157,37 @@
                 let currentRetry = 0;
                 
                 function tryConnect() {
-                    const callbackName = 'jsonp_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    const callbackName = 'cb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
                     const script = document.createElement('script');
-                    let timeoutId = null;
-                    let completed = false;
                     
                     const timeout = setTimeout(() => {
-                        if (completed) return;
-                        completed = true;
                         cleanup();
                         if (currentRetry < retries) {
                             currentRetry++;
-                            console.log(`⚠️ Bağlantı timeout (deneme ${currentRetry}/${retries})...`);
-                            setTimeout(tryConnect, 1000);
+                            console.log(`Bağlantı denemesi ${currentRetry}/${retries}...`);
+                            tryConnect();
                         } else {
-                            reject(new Error('Zaman aşımı. Google Apps Script URL\'ini kontrol edin ve YENİ deploy yapın.'));
+                            reject(new Error('Timeout - Tüm denemeler başarısız'));
                         }
-                    }, 60000); // 60 saniye timeout
+                    }, 30000); // 30 saniye timeout (büyük dosyalar için)
                     
                     function cleanup() {
-                        if (timeoutId) clearTimeout(timeoutId);
-                        try {
-                            delete window[callbackName];
-                            if (script.parentNode) script.parentNode.removeChild(script);
-                        } catch(e) {
-                            // Cleanup hatası önemsiz
-                        }
+                        clearTimeout(timeout);
+                        delete window[callbackName];
+                        if (script.parentNode) script.parentNode.removeChild(script);
                     }
                     
                     window[callbackName] = (data) => {
-                        if (completed) return;
-                        completed = true;
                         cleanup();
-                        console.log('✅ JSONP başarılı:', callbackName);
                         resolve(data);
                     };
                     
-                    script.onerror = (error) => {
-                        if (completed) return;
-                        completed = true;
+                    script.onerror = () => {
                         cleanup();
-                        console.error('❌ Script yükleme hatası:', error);
                         if (currentRetry < retries) {
                             currentRetry++;
-                            console.log(`⚠️ Tekrar deneniyor (${currentRetry}/${retries})...`);
-                            setTimeout(tryConnect, 2000);
+                            console.log(`Bağlantı hatası, deneme ${currentRetry}/${retries}...`);
+                            setTimeout(tryConnect, 1000);
                         } else {
                             reject(new Error('Bağlantı kurulamadı'));
                         }
