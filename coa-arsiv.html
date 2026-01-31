@@ -1627,17 +1627,17 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // PDF ve çok sayfalı dokümanlar için YÜKSEK KALİTE (500KB)
-                        // Tek sayfa image'ler için orta kalite (300KB)
+                        // PDF ve çok sayfalı dokümanlar için MİNİMAL SİKIŞTIRMA (2MB - YÜKSEK KALİTE)
+                        // Tek sayfa image'ler için orta kalite (400KB)
                         const isPDF = record.fileType && record.fileType.includes('pdf');
                         const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
                         
                         let targetSize;
                         if (isPDF || record.fileData.length > 3000000) { // 3MB'dan büyükse çok sayfalı olabilir
-                            targetSize = 500; // PDF ve büyük dosyalar için 500KB (yüksek kalite)
-                            console.log('📄 PDF/Çok sayfalı doküman - Yüksek kalite (500KB)');
+                            targetSize = 2000; // PDF ve büyük dosyalar için 2MB (minimal sıkıştırma, maksimum kalite)
+                            console.log('📄 PDF/Çok sayfalı doküman - Minimal sıkıştırma (2MB - çok yüksek kalite)');
                         } else {
-                            targetSize = isMobile ? 250 : 300; // Tek sayfa için 250-300KB
+                            targetSize = isMobile ? 350 : 400; // Tek sayfa için 350-400KB
                             console.log('📷 Tek sayfa image - Orta kalite (' + targetSize + 'KB)');
                         }
                         
@@ -2100,10 +2100,14 @@
                     
                     // Hedef boyuta göre başlangıç boyutu ayarla - YÜKSEK KALİTE
                     let maxDim;
-                    if (maxSizeKB >= 500) {
-                        maxDim = 3000; // 500KB+ için çok yüksek çözünürlük (PDF/çok sayfalı)
+                    if (maxSizeKB >= 2000) {
+                        maxDim = 4500; // 2MB+ için MUHTEkMEL çözünürlük (PDF/çok sayfalı - minimal sıkıştırma)
+                    } else if (maxSizeKB >= 1000) {
+                        maxDim = 3500; // 1MB+ için çok yüksek çözünürlük
+                    } else if (maxSizeKB >= 500) {
+                        maxDim = 3000; // 500KB+ için yüksek çözünürlük
                     } else if (maxSizeKB >= 300) {
-                        maxDim = 2400; // 300KB+ için yüksek çözünürlük
+                        maxDim = 2400; // 300KB+ için iyi çözünürlük
                     } else if (maxSizeKB >= 200) {
                         maxDim = 2000;
                     } else if (maxSizeKB >= 100) {
@@ -2132,10 +2136,14 @@
                     
                     // Kalite başlangıcı - YÜKSEK KALİTE
                     let quality;
-                    if (maxSizeKB >= 500) {
-                        quality = 0.95; // 500KB+ için çok yüksek kalite
+                    if (maxSizeKB >= 2000) {
+                        quality = 0.98; // 2MB+ için MUHTEkMEL kalite (neredeyse sıkıştırmasız)
+                    } else if (maxSizeKB >= 1000) {
+                        quality = 0.96; // 1MB+ için çok yüksek kalite
+                    } else if (maxSizeKB >= 500) {
+                        quality = 0.95; // 500KB+ için yüksek kalite
                     } else if (maxSizeKB >= 300) {
-                        quality = 0.92; // 300KB için yüksek kalite
+                        quality = 0.92; // 300KB için iyi kalite
                     } else if (maxSizeKB >= 200) {
                         quality = 0.90;
                     } else if (maxSizeKB >= 100) {
