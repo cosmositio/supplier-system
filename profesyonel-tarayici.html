@@ -423,21 +423,31 @@
                     cv.cvtColor(dst, finalGray, cv.COLOR_RGBA2GRAY);
                     
                     // 9. Bilateral Filter - gürültüyü temizle ama yazı kenarlarını koru
-                    cv.bilateralFilter(finalGray, finalGray, 9, 75, 75);
+                    const bilateralTemp = new cv.Mat();
+                    cv.bilateralFilter(finalGray, bilateralTemp, 9, 75, 75);
+                    finalGray.delete();
                     
                     // 10. CLAHE (Contrast Limited Adaptive Histogram Equalization) - profesyonel kontrast iyileştirme
+                    const claheResult = new cv.Mat();
                     const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
-                    clahe.apply(finalGray, finalGray);
+                    clahe.apply(bilateralTemp, claheResult);
+                    bilateralTemp.delete();
                     
                     // 11. Otsu's Binarization - otomatik eşik belirleme (adaptive'den çok daha iyi)
-                    cv.threshold(finalGray, finalGray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+                    const binaryResult = new cv.Mat();
+                    cv.threshold(claheResult, binaryResult, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
+                    claheResult.delete();
                     
                     // 12. Morphological Opening - küçük gürültü noktalarını temizle
                     const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
-                    cv.morphologyEx(finalGray, finalGray, cv.MORPH_OPEN, morphKernel);
+                    const morphResult = new cv.Mat();
+                    cv.morphologyEx(binaryResult, morphResult, cv.MORPH_OPEN, morphKernel);
+                    morphKernel.delete();
+                    binaryResult.delete();
                     
                     // 13. Convert back to RGBA
-                    cv.cvtColor(finalGray, dst, cv.COLOR_GRAY2RGBA);
+                    cv.cvtColor(morphResult, dst, cv.COLOR_GRAY2RGBA);
+                    morphResult.delete();
                     
                     // 14. Hafif sharpen (yazıları netleştir)
                     const sharpKernel = cv.matFromArray(3, 3, cv.CV_32F, [
@@ -445,26 +455,26 @@
                         -0.8, 4.2, -0.8,
                         0, -0.8, 0
                     ]);
-                    cv.filter2D(dst, dst, cv.CV_8U, sharpKernel);
+                    const sharpResult = new cv.Mat();
+                    cv.filter2D(dst, sharpResult, cv.CV_8U, sharpKernel);
+                    sharpKernel.delete();
+                    dst.delete();
                     
                     // 15. Display
                     canvas.width = w;
                     canvas.height = h;
-                    cv.imshow(canvas, dst);
+                    cv.imshow(canvas, sharpResult);
                     
                     // Cleanup
                     if (bestContour) bestContour.delete();
                     src.delete();
-                    dst.delete();
+                    sharpResult.delete();
                     gray.delete();
                     blurred.delete();
                     edges.delete();
                     contours.delete();
                     hierarchy.delete();
-                    finalGray.delete();
                     kernel.delete();
-                    morphKernel.delete();
-                    sharpKernel.delete();
                     srcPts.delete();
                     dstPts.delete();
                     M.delete();
