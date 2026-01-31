@@ -1088,13 +1088,14 @@
                 <div class="form-group">
                     <label>Sertifika Dosyası *</label>
                     <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <button type="button" class="btn btn-secondary" onclick="openProfessionalScanner()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                            📷 Kamera ile Tara (PRO)
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('cameraInput').click()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            📷 Kamera ile Çek
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
                             📁 Dosya Seç
                         </button>
                     </div>
+                    <input type="file" id="cameraInput" accept="image/*" capture="environment" style="display: none;" onchange="handleCameraCapture(event)">
                     <div class="upload-area" id="uploadArea" style="display: none;">
                         <div class="upload-icon">📄</div>
                         <div class="upload-text">Fotoğraf veya PDF sürükleyin<br>veya tıklayarak seçin</div>
@@ -3702,11 +3703,41 @@
 
         // ==================== KAMERA TARAYICI ====================
         
+        // Kamera ile fotoğraf çekme (basit, tarama yok)
+        function handleCameraCapture(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            console.log('Kamera ile fotoğraf çekildi:', file.name);
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                selectedFile = file;
+                selectedFileData = e.target.result;
+                
+                const uploadArea = document.getElementById('uploadArea');
+                const preview = document.getElementById('filePreview');
+                
+                uploadArea.classList.add('has-file');
+                preview.innerHTML = '<img src="' + e.target.result + '" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 10px;"><p style="margin-top: 10px; color: #4CAF50; font-weight: 600;">✅ Fotoğraf eklendi!</p>';
+                
+                showToast('✅ Fotoğraf forma eklendi!', 'success');
+            };
+            reader.readAsDataURL(file);
+            
+            // Input'u sıfırla (aynı fotoğrafı tekrar çekebilmek için)
+            event.target.value = '';
+        }
+        
+        // Eski tarayıcı fonksiyonları (kullanılmıyor artık)
         let scannerStream = null;
         let scannerCapturedData = null;
         let scannerWindow = null;
         
         function openProfessionalScanner() {
+            // KAPALI - Artık kullanılmıyor
+            showToast('❌ Profesyonel tarayıcı devre dışı. "Kamera ile Çek" kullanın.', 'error');
+            return;
             // Yeni pencerede profesyonel tarayıcıyı aç
             const width = Math.min(600, window.innerWidth - 20);
             const height = Math.min(900, window.innerHeight - 20);
