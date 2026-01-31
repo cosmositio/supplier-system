@@ -1364,22 +1364,15 @@
                         const compressedData = await compressForSheets(record.fileData, 250);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        // Form-encoded POST (CORS preflight yok!)
-                        const formData = new URLSearchParams();
-                        formData.append('action', 'uploadFile');
-                        formData.append('fileData', compressedData);
-                        formData.append('fileName', record.fileName);
-                        formData.append('mimeType', record.fileType || 'image/jpeg');
+                        // JSONP ile GET (CORS yok!)
+                        const uploadParams = new URLSearchParams();
+                        uploadParams.append('action', 'uploadFile');
+                        uploadParams.append('fileData', compressedData);
+                        uploadParams.append('fileName', record.fileName);
+                        uploadParams.append('mimeType', record.fileType || 'image/jpeg');
                         
-                        const uploadResponse = await fetch(googleScriptUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            body: formData.toString()
-                        });
-                        
-                        const uploadResult = await uploadResponse.json();
+                        const uploadUrl = googleScriptUrl + '?' + uploadParams.toString();
+                        const uploadResult = await jsonp(uploadUrl);
                         console.log('Drive upload sonucu:', uploadResult);
                         
                         if (uploadResult && uploadResult.success) {
@@ -1403,6 +1396,7 @@
                     supplier: record.supplier,
                     materialCode: record.materialCode,
                     deliveryDate: record.deliveryDate,
+                    deliveryNo: record.deliveryNo || '',
                     lotNumber: record.lotNumber || '',
                     location: record.location || '',
                     notes: record.notes || '',
@@ -2839,25 +2833,18 @@
                     showToast('☁️ Yeni dosya Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // İlk kayıttaki gibi sıkıştır ve POST ile gönder
+                        // JSONP ile GET (CORS yok!)
                         const compressedData = await compressForSheets(selectedFileData, 250);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        const formData = new URLSearchParams();
-                        formData.append('action', 'uploadFile');
-                        formData.append('fileData', compressedData);
-                        formData.append('fileName', selectedFile.name);
-                        formData.append('mimeType', selectedFile.type || 'image/jpeg');
+                        const uploadParams = new URLSearchParams();
+                        uploadParams.append('action', 'uploadFile');
+                        uploadParams.append('fileData', compressedData);
+                        uploadParams.append('fileName', selectedFile.name);
+                        uploadParams.append('mimeType', selectedFile.type || 'image/jpeg');
                         
-                        const uploadResponse = await fetch(googleScriptUrl, {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded'
-                            },
-                            body: formData.toString()
-                        });
-                        
-                        uploadResult = await uploadResponse.json();
+                        const uploadUrl = googleScriptUrl + '?' + uploadParams.toString();
+                        uploadResult = await jsonp(uploadUrl);
                         console.log('Drive upload sonucu:', uploadResult);
                         
                         if (!uploadResult || !uploadResult.success) {
@@ -2931,21 +2918,14 @@
                 const compressedData = await compressForSheets(selectedFileData, 250);
                 console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                 
-                const formData = new URLSearchParams();
-                formData.append('action', 'uploadFile');
-                formData.append('fileData', compressedData);
-                formData.append('fileName', selectedFile.name);
-                formData.append('mimeType', selectedFile.type || 'image/jpeg');
+                const uploadParams = new URLSearchParams();
+                uploadParams.append('action', 'uploadFile');
+                uploadParams.append('fileData', compressedData);
+                uploadParams.append('fileName', selectedFile.name);
+                uploadParams.append('mimeType', selectedFile.type || 'image/jpeg');
                 
-                const uploadResponse = await fetch(googleScriptUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded'
-                    },
-                    body: formData.toString()
-                });
-                
-                uploadResult = await uploadResponse.json();
+                const uploadUrl = googleScriptUrl + '?' + uploadParams.toString();
+                uploadResult = await jsonp(uploadUrl);
                 console.log('Drive upload sonucu:', uploadResult);
                 
                 if (!uploadResult || !uploadResult.success) {
