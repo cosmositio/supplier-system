@@ -399,28 +399,32 @@
                     const finalGray = new cv.Mat();
                     cv.cvtColor(dst, finalGray, cv.COLOR_RGBA2GRAY);
                     
-                    // 9. Gentle contrast enhancement (not too aggressive)
-                    cv.equalizeHist(finalGray, finalGray);
+                    // 9. Bilateral Filter - gürültüyü temizle ama yazı kenarlarını koru
+                    cv.bilateralFilter(finalGray, finalGray, 9, 75, 75);
                     
-                    // Adaptive threshold with gentle parameters
-                    cv.adaptiveThreshold(finalGray, finalGray, 255, 
-                        cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 21, 5);
+                    // 10. CLAHE (Contrast Limited Adaptive Histogram Equalization) - profesyonel kontrast iyileştirme
+                    const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
+                    clahe.apply(finalGray, finalGray);
                     
-                    // 10. Denoise
-                    cv.medianBlur(finalGray, finalGray, 3);
+                    // 11. Otsu's Binarization - otomatik eşik belirleme (adaptive'den çok daha iyi)
+                    cv.threshold(finalGray, finalGray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
                     
-                    // 11. Convert back to RGBA
+                    // 12. Morphological Opening - küçük gürültü noktalarını temizle
+                    const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
+                    cv.morphologyEx(finalGray, finalGray, cv.MORPH_OPEN, morphKernel);
+                    
+                    // 13. Convert back to RGBA
                     cv.cvtColor(finalGray, dst, cv.COLOR_GRAY2RGBA);
                     
-                    // 12. Sharpen
+                    // 14. Hafif sharpen (yazıları netleştir)
                     const sharpKernel = cv.matFromArray(3, 3, cv.CV_32F, [
-                        0, -0.5, 0,
-                        -0.5, 3, -0.5,
-                        0, -0.5, 0
+                        0, -0.8, 0,
+                        -0.8, 4.2, -0.8,
+                        0, -0.8, 0
                     ]);
                     cv.filter2D(dst, dst, cv.CV_8U, sharpKernel);
                     
-                    // 13. Display
+                    // 15. Display
                     canvas.width = w;
                     canvas.height = h;
                     cv.imshow(canvas, dst);
@@ -436,6 +440,7 @@
                     hierarchy.delete();
                     finalGray.delete();
                     kernel.delete();
+                    morphKernel.delete();
                     sharpKernel.delete();
                     srcPts.delete();
                     dstPts.delete();
