@@ -1157,69 +1157,34 @@
         });
         
         // ==================== JSONP Helper ====================
-        function jsonp(url, retries = 3) {
+        function jsonp(url) {
             return new Promise((resolve, reject) => {
-                let currentRetry = 0;
+                const callbackName = 'jsonp_' + Date.now();
+                const script = document.createElement('script');
                 
-                function tryConnect() {
-                    const callbackName = 'jsonpCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-                    const script = document.createElement('script');
-                    let completed = false;
-                    
-                    const timeout = setTimeout(() => {
-                        if (!completed) {
-                            completed = true;
-                            cleanup();
-                            if (currentRetry < retries) {
-                                currentRetry++;
-                                console.warn(`⏱ Timeout, yeniden deneniyor (${currentRetry}/${retries})...`);
-                                setTimeout(() => tryConnect(), 2000);
-                            } else {
-                                reject(new Error('Bağlantı zaman aşımı. URL doğru mu kontrol edin.'));
-                            }
-                        }
-                    }, 45000);
-                    
-                    function cleanup() {
-                        clearTimeout(timeout);
-                        try {
-                            delete window[callbackName];
-                            if (script && script.parentNode) {
-                                script.parentNode.removeChild(script);
-                            }
-                        } catch(e) {}
-                    }
-                    
-                    window[callbackName] = (data) => {
-                        if (!completed) {
-                            completed = true;
-                            cleanup();
-                            resolve(data);
-                        }
-                    };
-                    
-                    script.onerror = (error) => {
-                        if (!completed) {
-                            completed = true;
-                            cleanup();
-                            console.error('❌ Script yükleme hatası:', error);
-                            if (currentRetry < retries) {
-                                currentRetry++;
-                                console.warn(`🔄 Yeniden deneniyor (${currentRetry}/${retries})...`);
-                                setTimeout(() => tryConnect(), 2000);
-                            } else {
-                                reject(new Error('Apps Script erişilemedi. URL\'yi kontrol edin ve YENİ deploy yapın.'));
-                            }
-                        }
-                    };
-                    
-                    const separator = url.includes('?') ? '&' : '?';
-                    script.src = url + separator + 'callback=' + callbackName;
-                    console.log('🔗 JSONP isteği:', script.src.substring(0, 100) + '...');
-                    document.head.appendChild(script);
+                const timer = setTimeout(() => {
+                    cleanup();
+                    reject(new Error('Timeout'));
+                }, 60000);
+                
+                function cleanup() {
+                    clearTimeout(timer);
+                    delete window[callbackName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
                 }
                 
-                tryConnect();
+                window[callbackName] = function(data) {
+                    cleanup();
+                    resolve(data);
+                };
+                
+                script.onerror = function() {
+                    cleanup();
+                    reject(new Error('Script load error'));
+                };
+                
+                script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + callbackName;
+                document.head.appendChild(script);
             });
         }
         
