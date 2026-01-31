@@ -1628,21 +1628,24 @@
                     
                     try {
                         // ORJİNAL DOSYAYI DRIVE'A YÜKLE (SIKIŞTIRILMAMIŞ)
-                        // PDF ve çok sayfalı için sıkıştırma YOK
+                        // PDF, Excel, Word ve çok sayfalı için sıkıştırma YOK
                         const isPDF = record.fileType && record.fileType.includes('pdf');
+                        const isExcel = record.fileType && (record.fileType.includes('spreadsheet') || record.fileName.endsWith('.xlsx') || record.fileName.endsWith('.xls'));
+                        const isWord = record.fileType && (record.fileType.includes('wordprocessing') || record.fileName.endsWith('.docx') || record.fileName.endsWith('.doc'));
                         const isLargeFile = record.fileData.length > 3000000; // 3MB+
                         const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
                         
                         let uploadData;
-                        if (isPDF || isLargeFile) {
+                        if (isPDF || isExcel || isWord || isLargeFile) {
                             // ORJİNAL dosyayı yükle, sıkıştırma YOK
                             uploadData = record.fileData;
-                            console.log('📄 PDF/Çok sayfalı - ORJİNAL dosya yükleniyor (sıkıştırmasız):', Math.round(uploadData.length / 1024), 'KB');
+                            let fileTypeLabel = isPDF ? 'PDF' : (isExcel ? 'Excel' : (isWord ? 'Word' : 'Çok sayfalı'));
+                            console.log('📄 ' + fileTypeLabel + ' - ORJİNAL dosya yükleniyor (sıkıştırmasız):', Math.round(uploadData.length / 1024), 'KB');
                         } else {
-                            // Tek sayfa için hafif sıkıştırma
+                            // Sadece küçük resimler için hafif sıkıştırma
                             const targetSize = isMobile ? 350 : 400;
                             uploadData = await compressForSheets(record.fileData, targetSize);
-                            console.log('📷 Tek sayfa - Hafif sıkıştırma:', Math.round(uploadData.length / 1024), 'KB');
+                            console.log('📷 Küçük resim - Hafif sıkıştırma:', Math.round(uploadData.length / 1024), 'KB');
                         }
                         
                         const compressedData = uploadData;
