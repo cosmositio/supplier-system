@@ -1627,22 +1627,27 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // PDF ve çok sayfalı dokümanlar için MİNİMAL SİKIŞTIRMA (2MB - YÜKSEK KALİTE)
-                        // Tek sayfa image'ler için orta kalite (400KB)
+                        // PDF ve çok sayfalı dokümanlar için SIKIŞTIRILMADAN yükleme
                         const isPDF = record.fileType && record.fileType.includes('pdf');
-                        const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
+                        const isMultiPage = record.fileData.length > 3000000; // 3MB+
                         
-                        let targetSize;
-                        if (isPDF || record.fileData.length > 3000000) { // 3MB'dan büyükse çok sayfalı olabilir
-                            targetSize = 2000; // PDF ve büyük dosyalar için 2MB (minimal sıkıştırma, maksimum kalite)
-                            console.log('📄 PDF/Çok sayfalı doküman - Minimal sıkıştırma (2MB - çok yüksek kalite)');
+                        let uploadData;
+                        let actualFileSize;
+                        
+                        if (isPDF || isMultiPage) {
+                            // PDF veya çok sayfalı - SIKIŞTIRILMAMIŞ (orijinal kalite)
+                            uploadData = record.fileData;
+                            actualFileSize = Math.round(uploadData.length / 1024);
+                            console.log('📄 PDF/Çok sayfalı doküman - SIKIŞTIRILMADAN yükleniyor');
+                            console.log('Orijinal boyut:', actualFileSize, 'KB');
                         } else {
-                            targetSize = isMobile ? 350 : 400; // Tek sayfa için 350-400KB
-                            console.log('📷 Tek sayfa image - Orta kalite (' + targetSize + 'KB)');
+                            // Tek sayfa için sıkıştır
+                            const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
+                            const targetSize = isMobile ? 350 : 400;
+                            uploadData = await compressForSheets(record.fileData, targetSize);
+                            actualFileSize = Math.round(uploadData.length / 1024);
+                            console.log('📷 Tek sayfa - Sıkıştırıldı:', actualFileSize, 'KB');
                         }
-                        
-                        const compressedData = await compressForSheets(record.fileData, targetSize);
-                        console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
                         // fetch() ile POST (XMLHttpRequest CORS problemi yaratıyor)
                         let lastError = null;
@@ -1659,14 +1664,15 @@
                                 // fetch() ile POST - CORS uyumlu
                                 const formData = new URLSearchParams();
                                 formData.append('action', 'uploadFile');
-                                formData.append('fileData', compressedData);
+                                formData.append('fileData', uploadData);
                                 formData.append('fileName', record.fileName);
                                 formData.append('mimeType', record.fileType || 'image/jpeg');
                                 
                                 console.log('Gönderilen veri boyutu:', Math.round(formData.toString().length / 1024), 'KB');
                                 
                                 const controller = new AbortController();
-                                const timeout = isMobile ? 240000 : 120000;
+                                // PDF ve çok sayfalı için daha uzun timeout
+                                const timeout = (isPDF || isMultiPage) ? 360000 : (isMobile ? 240000 : 120000); // 6 dakika / 4 dakika / 2 dakika
                                 const timeoutId = setTimeout(() => controller.abort(), timeout);
                                 
                                 const response = await fetch(googleScriptUrl, {
