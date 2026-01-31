@@ -869,7 +869,8 @@
                                    placeholder="Tedarikçi ara veya yazın..." 
                                    autocomplete="off"
                                    onfocus="showSupplierDropdown()"
-                                   oninput="filterSupplierDropdown()">
+                                   oninput="filterSupplierDropdown()"
+                                   onchange="filterMaterialsBySupplier()">
                             <span class="supplier-dropdown-arrow">▼</span>
                             <div class="supplier-dropdown-list" id="supplierDropdownList">
                                 <div class="supplier-dropdown-count" id="supplierDropdownCount"></div>
@@ -2077,7 +2078,7 @@
                     
                     // Verileri topla
                     const supplierSet = new Set();
-                    const materialMap = new Map(); // stokKodu -> {code, name}
+                    const materialMap = new Map(); // stokKodu -> {code, name, suppliers: []}
                     
                     for (let i = 1; i < jsonData.length; i++) {
                         const row = jsonData[i];
@@ -2094,10 +2095,16 @@
                         if (stokKodu && String(stokKodu).trim() && stokAdi && String(stokAdi).trim()) {
                             const code = String(stokKodu).trim();
                             const name = String(stokAdi).trim();
+                            const supplier = cariAdi ? String(cariAdi).trim() : null;
                             
-                            // Tekrarlayan kodları kontrol et
+                            // Hammadde-tedarikçi ilişkisini kaydet
                             if (!materialMap.has(code)) {
-                                materialMap.set(code, { code, name });
+                                materialMap.set(code, { code, name, suppliers: [] });
+                            }
+                            
+                            // Bu tedarikçiyi hammaddenin supplier listesine ekle
+                            if (supplier && !materialMap.get(code).suppliers.includes(supplier)) {
+                                materialMap.get(code).suppliers.push(supplier);
                             }
                         }
                     }
@@ -2296,6 +2303,9 @@
             
             input.value = supplierName;
             dropdown.classList.remove('active');
+            
+            // Tedarikçi seçilince hammaddeleri filtrele
+            filterMaterialsBySupplier();
         }
         
         // Dropdown dışına tıklanınca kapat
@@ -2422,11 +2432,22 @@
             
             if (!itemsContainer) return;
             
+            // Seçili tedarikçiyi al
+            const selectedSupplier = document.getElementById('supplierInput')?.value?.trim();
+            
             const searchTerm = filterText.toLowerCase();
             const filtered = materials.filter(m => {
                 const code = (m.code || m.stockCode || m.stokKodu || '').toLowerCase();
                 const name = (m.name || m.stockName || m.stokAdı || '').toLowerCase();
-                return code.includes(searchTerm) || name.includes(searchTerm);
+                const matchesSearch = code.includes(searchTerm) || name.includes(searchTerm);
+                
+                // Tedarikçi seçiliyse, sadece o tedarikçinin hammaddelerini göster
+                if (selectedSupplier && m.suppliers && m.suppliers.length > 0) {
+                    const matchesSupplier = m.suppliers.includes(selectedSupplier);
+                    return matchesSearch && matchesSupplier;
+                }
+                
+                return matchesSearch;
             });
             
             itemsContainer.innerHTML = '';
@@ -2464,6 +2485,35 @@
             const input = document.getElementById('materialCode');
             input.value = `${code} - ${name}`;
             hideMaterialDropdown();
+        }
+        
+        // Tedarikçi seçilince hammaddeleri filtrele
+        function filterMaterialsBySupplier() {
+            const selectedSupplier = document.getElementById('supplierInput')?.value?.trim();
+            const materialInput = document.getElementById('materialCode');
+            
+            if (selectedSupplier) {
+                // Hammadde dropdown'ını güncelle
+                updateMaterialDropdown(materialInput.value);
+                
+                // Placeholder'ı güncelle
+                materialInput.placeholder = `🔍 ${selectedSupplier} hammaddelerini ara...`;
+                
+                // Bilgi göster
+                const filteredCount = materials.filter(m => 
+                    m.suppliers && m.suppliers.includes(selectedSupplier)
+                ).length;
+                
+                if (filteredCount > 0) {
+                    showToast(`📦 ${selectedSupplier} için ${filteredCount} hammadde bulundu`, 'info', 2000);
+                } else {
+                    showToast(`⚠️ ${selectedSupplier} için hammadde bulunamadı`, 'warning', 2000);
+                }
+            } else {
+                // Tedarikçi seçili değilse tüm hammaddeleri göster
+                materialInput.placeholder = '🔍 Hammadde ara veya yazın...';
+                updateMaterialDropdown(materialInput.value);
+            }
         }
         
         // Dropdown dışına tıklanınca kapat
