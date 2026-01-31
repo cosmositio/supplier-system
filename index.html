@@ -1127,7 +1127,7 @@
                         💾 Tedarikçi Listesini İndir (JSON)
                     </button>
                     <button type="button" onclick="createMobileCOALink()" style="margin-top: 10px; margin-left: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
-                        📱 Mobil COA Arşiv Linki
+                        ❓ Mobilde Nasıl Kullanılır?
                     </button>
                 </div>
             </div>
@@ -2899,43 +2899,9 @@
         
         // Mobil için COA arşiv linki oluştur
         function createMobileCOALink() {
-            try {
-                const supplierNames = allResults
-                    .map(r => r.name)
-                    .filter(n => n && !n.startsWith('[Tedarikçi Adı Yok'))
-                    .sort();
-                
-                if (supplierNames.length === 0) {
-                    showAlert('⚠️ Önce Excel dosyası yükleyin!', 'warning');
-                    return;
-                }
-                
-                // Tedarikçileri base64 encode et
-                const data = btoa(encodeURIComponent(JSON.stringify(supplierNames)));
-                
-                // Tam URL oluştur
-                const currentPath = window.location.pathname;
-                const basePath = currentPath.substring(0, currentPath.lastIndexOf('/'));
-                const fullUrl = window.location.origin + basePath + '/coa-arsiv.html?suppliers=' + data;
-                
-                // Clipboard'a kopyala
-                if (navigator.clipboard && navigator.clipboard.writeText) {
-                    navigator.clipboard.writeText(fullUrl).then(() => {
-                        showAlert(`✅ Link kopyalandı! (${supplierNames.length} tedarikçi)\n\nWhatsApp'tan kendinize gönderin ve mobilde açın.`, 'success');
-                    }).catch(() => {
-                        // Fallback: manuel kopyalama için prompt göster
-                        prompt('Linki kopyalayın (Ctrl+C):', fullUrl);
-                    });
-                } else {
-                    // Eski tarayıcılar için fallback
-                    prompt('Linki kopyalayın (Ctrl+C):', fullUrl);
-                }
-                
-                console.log('📱 Mobil link oluşturuldu:', supplierNames.length, 'tedarikçi');
-            } catch (e) {
-                console.error('❌ Link oluşturma hatası:', e);
-                showAlert('❌ Link oluşturulamadı: ' + e.message, 'error');
-            }
+            // LocalStorage farklı cihazlarda paylaşılamaz
+            // En iyi çözüm: JSON dosyasını indirip mobilde yüklemek
+            showAlert('📱 Mobil için en pratik yöntem:\n\n1. ✅ "Tedarikçi listesini indir" checkbox\'ı işaretli (zaten işaretli)\n2. 📥 Excel yüklendiğinde JSON otomatik indirilir\n3. 📱 JSON dosyasını WhatsApp\'tan kendinize gönderin\n4. 📂 Mobilde COA arşivde "JSON Yükle" butonuna tıklayın\n5. ✅ 561 tedarikçi mobilde hazır!', 'info');
         }
         
         // Tedarikçi listesini Google Sheets'e kaydet (tüm cihazlarda senkron)

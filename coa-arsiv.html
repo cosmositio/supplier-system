@@ -934,32 +934,65 @@
         let selectedItems = new Set();
         
         // URL parametresinden tedarikçileri otomatik yükle (Mobil link için)
+        // NOT: URL çok uzun olduğu için (20,000+ karakter) WhatsApp ve çoğu tarayıcı keser
+        // En iyi çözüm: JSON dosyası indirip manuel yüklemek
         function loadSuppliersFromURL() {
             const urlParams = new URLSearchParams(window.location.search);
             const suppliersData = urlParams.get('suppliers');
             
+            console.log('🔍 URL kontrol ediliyor...');
+            console.log('URL parametresi var mı?', suppliersData ? 'Evet' : 'Hayır');
+            
             if (suppliersData) {
                 try {
+                    console.log('🔓 Base64 decode ediliyor... (uzunluk: ' + suppliersData.length + ')');
+                    
+                    // URL çok uzunsa uyarı ver
+                    if (suppliersData.length < 1000) {
+                        showToast('⚠️ URL verisi eksik görünüyor. JSON dosyası yükleyin.', 'warning', 5000);
+                        return false;
+                    }
+                    
                     // Base64 decode ve parse et
                     const suppliers = JSON.parse(decodeURIComponent(atob(suppliersData)));
+                    
+                    console.log('✅ Parse başarılı. Tedarikçi sayısı:', suppliers.length);
                     
                     if (Array.isArray(suppliers) && suppliers.length > 0) {
                         // localStorage'a kaydet
                         localStorage.setItem('supplierListForCOA', JSON.stringify(suppliers));
+                        console.log('💾 localStorage\'a kaydedildi');
+                        
+                        // Dropdown'ı güncelle
+                        const select = document.getElementById('supplier');
+                        // Mevcut seçenekleri temizle (placeholder hariç)
+                        while (select.options.length > 1) {
+                            select.remove(1);
+                        }
+                        // Tedarikçileri alfabetik sırala ve ekle
+                        suppliers.sort().forEach(supplier => {
+                            const option = document.createElement('option');
+                            option.value = supplier;
+                            option.textContent = supplier;
+                            select.appendChild(option);
+                        });
+                        console.log('🔽 Dropdown güncellendi');
                         
                         // Başarı mesajı göster
-                        showToast('✅ ' + suppliers.length + ' tedarikçi mobilde yüklendi!', 'success');
+                        showToast('✅ ' + suppliers.length + ' tedarikçi mobilde yüklendi!', 'success', 4000);
                         
                         // URL'i temizle (parametreyi kaldır)
                         window.history.replaceState({}, document.title, window.location.pathname);
                         
                         console.log('📱 Mobil linkten tedarikçi yüklendi:', suppliers.length);
+                        return true; // Başarılı
                     }
                 } catch (error) {
-                    console.error('URL\'den tedarikçi yükleme hatası:', error);
-                    showToast('⚠️ Tedarikçi verisi okunamadı', 'warning');
+                    console.error('❌ URL\'den tedarikçi yükleme hatası:', error);
+                    showToast('⚠️ URL çok uzun veya bozuk. JSON dosyası yükleyin.', 'warning', 5000);
                 }
             }
+            return false; // URL'de tedarikçi verisi yok
         }
         
         // ==================== Initialization ====================
