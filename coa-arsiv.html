@@ -1360,36 +1360,14 @@
                         const compressedData = await compressForSheets(record.fileData, 250);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        // XMLHttpRequest ile POST (CORS header'ları çalışır)
-                        const uploadResult = await new Promise((resolve, reject) => {
-                            const xhr = new XMLHttpRequest();
-                            xhr.open('POST', googleScriptUrl, true);
-                            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                            
-                            xhr.onload = function() {
-                                if (xhr.status === 200) {
-                                    try {
-                                        resolve(JSON.parse(xhr.responseText));
-                                    } catch(e) {
-                                        reject(new Error('JSON parse hatası'));
-                                    }
-                                } else {
-                                    reject(new Error('HTTP ' + xhr.status));
-                                }
-                            };
-                            
-                            xhr.onerror = () => reject(new Error('Network error'));
-                            xhr.ontimeout = () => reject(new Error('Timeout'));
-                            xhr.timeout = 60000; // 60 saniye
-                            
-                            const formData = new URLSearchParams();
-                            formData.append('action', 'uploadFile');
-                            formData.append('fileData', compressedData);
-                            formData.append('fileName', record.fileName);
-                            formData.append('mimeType', record.fileType || 'image/jpeg');
-                            
-                            xhr.send(formData.toString());
-                        });
+                        // JSONP ile GET isteği (CORS problemi yok)
+                        const params = new URLSearchParams();
+                        params.append('action', 'uploadFile');
+                        params.append('fileData', compressedData);
+                        params.append('fileName', record.fileName);
+                        params.append('mimeType', record.fileType || 'image/jpeg');
+                        
+                        const uploadResult = await jsonp(googleScriptUrl + '?' + params.toString());
                         
                         console.log('Drive upload sonucu:', uploadResult);
                         
@@ -2855,35 +2833,13 @@
                         const compressedData = await compressForSheets(selectedFileData, 250);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         
-                        uploadResult = await new Promise((resolve, reject) => {
-                            const xhr = new XMLHttpRequest();
-                            xhr.open('POST', googleScriptUrl, true);
-                            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                            
-                            xhr.onload = function() {
-                                if (xhr.status === 200) {
-                                    try {
-                                        resolve(JSON.parse(xhr.responseText));
-                                    } catch(e) {
-                                        reject(new Error('JSON parse hatası'));
-                                    }
-                                } else {
-                                    reject(new Error('HTTP ' + xhr.status));
-                                }
-                            };
-                            
-                            xhr.onerror = () => reject(new Error('Network error'));
-                            xhr.ontimeout = () => reject(new Error('Timeout'));
-                            xhr.timeout = 60000;
-                            
-                            const formData = new URLSearchParams();
-                            formData.append('action', 'uploadFile');
-                            formData.append('fileData', compressedData);
-                            formData.append('fileName', selectedFile.name);
-                            formData.append('mimeType', selectedFile.type || 'image/jpeg');
-                            
-                            xhr.send(formData.toString());
-                        });
+                        const params = new URLSearchParams();
+                        params.append('action', 'uploadFile');
+                        params.append('fileData', compressedData);
+                        params.append('fileName', selectedFile.name);
+                        params.append('mimeType', selectedFile.type || 'image/jpeg');
+                        
+                        uploadResult = await jsonp(googleScriptUrl + '?' + params.toString());
                         console.log('Drive upload sonucu:', uploadResult);
                         
                         if (!uploadResult || !uploadResult.success) {
@@ -2957,35 +2913,13 @@
                 const compressedData = await compressForSheets(selectedFileData, 250);
                 console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                 
-                uploadResult = await new Promise((resolve, reject) => {
-                    const xhr = new XMLHttpRequest();
-                    xhr.open('POST', googleScriptUrl, true);
-                    xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                    
-                    xhr.onload = function() {
-                        if (xhr.status === 200) {
-                            try {
-                                resolve(JSON.parse(xhr.responseText));
-                            } catch(e) {
-                                reject(new Error('JSON parse hatası'));
-                            }
-                        } else {
-                            reject(new Error('HTTP ' + xhr.status));
-                        }
-                    };
-                    
-                    xhr.onerror = () => reject(new Error('Network error'));
-                    xhr.ontimeout = () => reject(new Error('Timeout'));
-                    xhr.timeout = 60000;
-                    
-                    const formData = new URLSearchParams();
-                    formData.append('action', 'uploadFile');
-                    formData.append('fileData', compressedData);
-                    formData.append('fileName', selectedFile.name);
-                    formData.append('mimeType', selectedFile.type || 'image/jpeg');
-                    
-                    xhr.send(formData.toString());
-                });
+                const params = new URLSearchParams();
+                params.append('action', 'uploadFile');
+                params.append('fileData', compressedData);
+                params.append('fileName', selectedFile.name);
+                params.append('mimeType', selectedFile.type || 'image/jpeg');
+                
+                uploadResult = await jsonp(googleScriptUrl + '?' + params.toString());
                 console.log('Drive upload sonucu:', uploadResult);
                 
                 if (!uploadResult || !uploadResult.success) {
