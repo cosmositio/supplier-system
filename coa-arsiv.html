@@ -1250,6 +1250,8 @@
                             fileType: record.fileType || '',
                             fileUrl: record.fileUrl || '',
                             fileData: record.fileData || '', // Dosya verisi dahil
+                            fileSize: record.fileSize || 0, // Dosya boyutu (bytes)
+                            driveFileId: record.driveFileId || '',
                             createdAt: record.createdAt || '',
                             updatedAt: record.updatedAt || ''
                         };
@@ -1257,7 +1259,19 @@
                     
                     console.log('Yüklenen kayıt sayısı:', coaData.length);
                     const withFiles = coaData.filter(r => r.fileData).length;
+                    const withFileSize = coaData.filter(r => r.fileSize).length;
                     console.log('Dosyalı kayıt sayısı:', withFiles);
+                    console.log('fileSize bilgisi olan:', withFileSize);
+                    
+                    // İlk kayıttan örnek göster
+                    if (coaData.length > 0) {
+                        console.log('İlk kayıt örneği:', {
+                            id: coaData[0].id,
+                            fileName: coaData[0].fileName,
+                            fileSize: coaData[0].fileSize,
+                            hasFileData: !!coaData[0].fileData
+                        });
+                    }
                     
                     // Yerel yedek olarak da kaydet
                     saveToLocalStorage();
@@ -1288,6 +1302,7 @@
                 
                 let fileUrl = '';
                 let driveFileId = '';
+                let fileSize = 0;
                 
                 // Dosya varsa Drive'a yükle
                 if (record.fileData && record.fileName) {
@@ -1320,6 +1335,7 @@
                         if (uploadResult && uploadResult.success) {
                             fileUrl = uploadResult.viewUrl || uploadResult.directUrl;
                             driveFileId = uploadResult.fileId;
+                            fileSize = uploadResult.fileSize || 0;
                             showToast('✅ Dosya Drive\'a yüklendi!', 'success');
                         } else {
                             console.error('Drive upload hatası:', uploadResult?.error);
@@ -1345,6 +1361,7 @@
                     fileUrl: fileUrl,
                     driveFileId: driveFileId,
                     fileData: '', // Sheets'e base64 koymuyoruz
+                    fileSize: fileSize || record.fileSize || 0, // Dosya boyutu
                     createdAt: record.createdAt || new Date().toISOString()
                 };
                 
@@ -2860,20 +2877,30 @@
             
             // Toplam dosya boyutunu hesapla - önce fileSize kullan, yoksa fileData'dan hesapla
             let totalBytes = 0;
+            let fromFileSize = 0;
+            let fromFileData = 0;
+            
             coaData.forEach(c => {
                 if (c.fileSize) {
                     // Drive'dan gelen gerçek dosya boyutu (bytes)
                     totalBytes += parseInt(c.fileSize);
+                    fromFileSize++;
                 } else if (c.fileData) {
                     // Base64 boyutunu gerçek boyuta çevir (base64 %33 daha büyük)
                     const base64Length = c.fileData.length;
                     const realSize = Math.ceil(base64Length * 0.75);
                     totalBytes += realSize;
+                    fromFileData++;
                 }
             });
             
             const totalMB = (totalBytes / (1024 * 1024)).toFixed(2);
             document.getElementById('statTotalSize').textContent = totalMB + ' MB';
+            
+            console.log('📊 Dosya boyutu istatistikleri:');
+            console.log('- fileSize kullanan:', fromFileSize);
+            console.log('- fileData kullanan:', fromFileData);
+            console.log('- Toplam:', totalMB, 'MB');
         }
         
         function renderTable() {
