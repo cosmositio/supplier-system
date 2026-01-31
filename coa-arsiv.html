@@ -1577,15 +1577,29 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // Mobil uyumlu - 200KB (hızlı yükleme)
-                        const compressedData = await compressForSheets(record.fileData, 200);
+                        // Mobil için daha agresif sıkıştırma - 150KB (hata oranını azalt)
+                        const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
+                        const targetSize = isMobile ? 150 : 200; // KB
+                        const compressedData = await compressForSheets(record.fileData, targetSize);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
-                        console.log('Cihaz:', /Mobile|Android|iPhone/i.test(navigator.userAgent) ? 'Mobil' : 'Desktop');
+                        console.log('Cihaz:', isMobile ? 'Mobil' : 'Desktop', '- Hedef:', targetSize + 'KB');
                         
-                        // XMLHttpRequest POST (büyük veri için)
-                        const uploadResult = await new Promise((resolve, reject) => {
+                        // XMLHttpRequest POST (büyük veri için) - 3 deneme retry
+                        let lastError = null;
+                        let uploadResult = null;
+                        
+                        for (let attempt = 1; attempt <= 3; attempt++) {
+                            try {
+                                if (attempt > 1) {
+                                    console.log('⚠️ Tekrar deneniyor... Deneme:', attempt + '/3');
+                                    showToast('⚠️ Tekrar deneniyor (' + attempt + '/3)...', 'warning', 2000);
+                                    await new Promise(resolve => setTimeout(resolve, 2000)); // 2 saniye bekle
+                                }
+                                
+                                uploadResult = await new Promise((resolve, reject) => {
                             const xhr = new XMLHttpRequest();
-                            xhr.timeout = 120000; // 120 saniye (mobil için)
+                            // Mobil için çok uzun timeout - 240 saniye (4 dakika)
+                            xhr.timeout = isMobile ? 240000 : 120000;
                             
                             xhr.onload = function() {
                                 if (xhr.status === 200) {
@@ -1601,7 +1615,7 @@
                             };
                             
                             xhr.onerror = () => reject(new Error('Bağlantı hatası'));
-                            xhr.ontimeout = () => reject(new Error('Zaman aşımı (120 saniye)'));
+                            xhr.ontimeout = () => reject(new Error('Zaman aşımı (' + (xhr.timeout/1000) + ' saniye)'));
                             
                             // Progress tracking for mobile
                             xhr.upload.onprogress = (e) => {
@@ -1626,6 +1640,17 @@
                             console.log('Gönderilen veri boyutu:', Math.round(formData.toString().length / 1024), 'KB');
                             xhr.send(formData.toString());
                         });
+                        
+                                // Başarılıysa loop'tan çık
+                                break;
+                            } catch (attemptError) {
+                                lastError = attemptError;
+                                console.error('Deneme ' + attempt + ' başarısız:', attemptError.message);
+                                if (attempt === 3) {
+                                    throw new Error('3 deneme başarısız: ' + attemptError.message);
+                                }
+                            }
+                        }
                         
                         console.log('Drive upload sonucu:', uploadResult);
                         console.log('Upload response keys:', Object.keys(uploadResult || {}));
