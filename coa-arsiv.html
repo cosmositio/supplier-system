@@ -2228,8 +2228,8 @@
                     }
                     
                     if (materialArray.length > 0) {
-                        saveMaterials(materialArray);
                         materials = materialArray;
+                        saveMaterials();
                         updateMaterialDropdown();
                     }
                     
@@ -2469,9 +2469,10 @@
             }
         }
         
-        function saveMaterials() {
-            localStorage.setItem('coa_materials', JSON.stringify(materials));
-            console.log('💾 Hammadde listesi kaydedildi');
+        function saveMaterials(materialsToSave) {
+            const dataToSave = materialsToSave || materials;
+            localStorage.setItem('coa_materials', JSON.stringify(dataToSave));
+            console.log('💾 Hammadde listesi kaydedildi:', dataToSave.length, 'adet');
         }
         
         function loadMaterialJSON(event) {
@@ -2555,9 +2556,9 @@
             itemsContainer.innerHTML = '';
             
             if (filtered.length === 0 && materials.length === 0) {
-                itemsContainer.innerHTML = '<div style="padding: 15px; text-align: center; color: #999;">📦 Hammadde listesi boş<br><small>JSON dosyası yükleyin</small></div>';
+                itemsContainer.innerHTML = '<div style="padding: 15px; text-align: center; color: #999;">📦 Hammadde listesi boş<br><small>Excel yükleyin (Tedarikçi bilgilerinin üstünde)</small></div>';
                 countElement.textContent = '0 hammadde';
-                materialCountLabel.innerHTML = '<span style="color: #f44336;">(⚠️ Liste boş)</span>';
+                materialCountLabel.innerHTML = '<span style="color: #f44336;">(⚠️ Excel yükleyin)</span>';
                 return;
             }
             
