@@ -1088,8 +1088,8 @@
                 <div class="form-group">
                     <label>Sertifika Dosyası *</label>
                     <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                        <button type="button" class="btn btn-secondary" onclick="openScanner()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
-                            📷 Kamera ile Tara
+                        <button type="button" class="btn btn-secondary" onclick="openProfessionalScanner()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            📷 Kamera ile Tara (PRO)
                         </button>
                         <button type="button" class="btn btn-secondary" onclick="document.getElementById('fileInput').click()" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
                             📁 Dosya Seç
@@ -3679,6 +3679,53 @@
         
         let scannerStream = null;
         let scannerCapturedData = null;
+        let scannerWindow = null;
+        
+        function openProfessionalScanner() {
+            // Yeni pencerede profesyonel tarayıcıyı aç
+            const width = Math.min(600, window.innerWidth - 20);
+            const height = Math.min(900, window.innerHeight - 20);
+            const left = (window.innerWidth - width) / 2;
+            const top = (window.innerHeight - height) / 2;
+            
+            scannerWindow = window.open(
+                'profesyonel-tarayici.html',
+                'Belge Tarayıcı',
+                `width=${width},height=${height},left=${left},top=${top}`
+            );
+            
+            if (!scannerWindow) {
+                showToast('❌ Pop-up engellendi! Lütfen tarayıcı ayarlarından izin verin', 'error');
+            }
+        }
+        
+        // Tarayıcıdan gelen mesajları dinle
+        window.addEventListener('message', async (event) => {
+            if (event.data.type === 'scannedImage') {
+                const dataURL = event.data.data;
+                
+                // Convert to File object
+                const blob = await (await fetch(dataURL)).blob();
+                const file = new File([blob], 'scanned_' + Date.now() + '.jpg', { type: 'image/jpeg' });
+                
+                // Set as selected file
+                selectedFile = file;
+                selectedFileData = dataURL;
+                
+                const uploadArea = document.getElementById('uploadArea');
+                const preview = document.getElementById('filePreview');
+                
+                uploadArea.classList.add('has-file');
+                preview.innerHTML = '<img src="' + dataURL + '" style="max-width: 100%; max-height: 300px; border-radius: 8px; margin-top: 10px;"><p style="margin-top: 10px; color: #4CAF50; font-weight: 600;">✅ Profesyonel tarama tamamlandı!</p>';
+                
+                showToast('✅ Taranmış belge forma eklendi!', 'success');
+                
+                // Close scanner window
+                if (scannerWindow) {
+                    scannerWindow.close();
+                }
+            }
+        });
         
         function openScanner() {
             const modal = document.getElementById('scannerModal');
