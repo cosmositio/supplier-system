@@ -1162,44 +1162,61 @@
                 let currentRetry = 0;
                 
                 function tryConnect() {
-                    const callbackName = 'cb_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5);
+                    const callbackName = 'jsonpCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
                     const script = document.createElement('script');
+                    let completed = false;
                     
                     const timeout = setTimeout(() => {
-                        cleanup();
-                        if (currentRetry < retries) {
-                            currentRetry++;
-                            console.log(`Bağlantı denemesi ${currentRetry}/${retries}...`);
-                            tryConnect();
-                        } else {
-                            reject(new Error('Timeout - Tüm denemeler başarısız'));
+                        if (!completed) {
+                            completed = true;
+                            cleanup();
+                            if (currentRetry < retries) {
+                                currentRetry++;
+                                console.warn(`⏱ Timeout, yeniden deneniyor (${currentRetry}/${retries})...`);
+                                setTimeout(() => tryConnect(), 2000);
+                            } else {
+                                reject(new Error('Bağlantı zaman aşımı. URL doğru mu kontrol edin.'));
+                            }
                         }
-                    }, 30000); // 30 saniye timeout (büyük dosyalar için)
+                    }, 45000);
                     
                     function cleanup() {
                         clearTimeout(timeout);
-                        delete window[callbackName];
-                        if (script.parentNode) script.parentNode.removeChild(script);
+                        try {
+                            delete window[callbackName];
+                            if (script && script.parentNode) {
+                                script.parentNode.removeChild(script);
+                            }
+                        } catch(e) {}
                     }
                     
                     window[callbackName] = (data) => {
-                        cleanup();
-                        resolve(data);
-                    };
-                    
-                    script.onerror = () => {
-                        cleanup();
-                        if (currentRetry < retries) {
-                            currentRetry++;
-                            console.log(`Bağlantı hatası, deneme ${currentRetry}/${retries}...`);
-                            setTimeout(tryConnect, 1000);
-                        } else {
-                            reject(new Error('Bağlantı kurulamadı'));
+                        if (!completed) {
+                            completed = true;
+                            cleanup();
+                            resolve(data);
                         }
                     };
                     
-                    script.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + callbackName;
-                    document.body.appendChild(script);
+                    script.onerror = (error) => {
+                        if (!completed) {
+                            completed = true;
+                            cleanup();
+                            console.error('❌ Script yükleme hatası:', error);
+                            if (currentRetry < retries) {
+                                currentRetry++;
+                                console.warn(`🔄 Yeniden deneniyor (${currentRetry}/${retries})...`);
+                                setTimeout(() => tryConnect(), 2000);
+                            } else {
+                                reject(new Error('Apps Script erişilemedi. URL\'yi kontrol edin ve YENİ deploy yapın.'));
+                            }
+                        }
+                    };
+                    
+                    const separator = url.includes('?') ? '&' : '?';
+                    script.src = url + separator + 'callback=' + callbackName;
+                    console.log('🔗 JSONP isteği:', script.src.substring(0, 100) + '...');
+                    document.head.appendChild(script);
                 }
                 
                 tryConnect();
