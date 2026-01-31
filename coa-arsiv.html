@@ -1627,22 +1627,25 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // PDF ve çok sayfalı dokümanlar için MİNİMAL SİKIŞTIRMA (2MB - YÜKSEK KALİTE)
-                        // Tek sayfa image'ler için orta kalite (400KB)
+                        // ORJİNAL DOSYAYI DRIVE'A YÜKLE (SIKIŞTIRILMAMIŞ)
+                        // PDF ve çok sayfalı için sıkıştırma YOK
                         const isPDF = record.fileType && record.fileType.includes('pdf');
-                        const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
+                        const isLargeFile = record.fileData.length > 3000000; // 3MB+
                         
-                        let targetSize;
-                        if (isPDF || record.fileData.length > 3000000) { // 3MB'dan büyükse çok sayfalı olabilir
-                            targetSize = 2000; // PDF ve büyük dosyalar için 2MB (minimal sıkıştırma, maksimum kalite)
-                            console.log('📄 PDF/Çok sayfalı doküman - Minimal sıkıştırma (2MB - çok yüksek kalite)');
+                        let uploadData;
+                        if (isPDF || isLargeFile) {
+                            // ORJİNAL dosyayı yükle, sıkıştırma YOK
+                            uploadData = record.fileData;
+                            console.log('📄 PDF/Çok sayfalı - ORJİNAL dosya yükleniyor (sıkıştırmasız):', Math.round(uploadData.length / 1024), 'KB');
                         } else {
-                            targetSize = isMobile ? 350 : 400; // Tek sayfa için 350-400KB
-                            console.log('📷 Tek sayfa image - Orta kalite (' + targetSize + 'KB)');
+                            // Tek sayfa için hafif sıkıştırma
+                            const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
+                            const targetSize = isMobile ? 350 : 400;
+                            uploadData = await compressForSheets(record.fileData, targetSize);
+                            console.log('📷 Tek sayfa - Hafif sıkıştırma:', Math.round(uploadData.length / 1024), 'KB');
                         }
                         
-                        const compressedData = await compressForSheets(record.fileData, targetSize);
-                        console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
+                        const compressedData = uploadData;
                         
                         // fetch() ile POST (XMLHttpRequest CORS problemi yaratıyor)
                         let lastError = null;
@@ -1661,9 +1664,16 @@
                                 formData.append('action', 'uploadFile');
                                 formData.append('fileData', compressedData);
                                 formData.append('fileName', record.fileName);
-                                formData.append('mimeType', record.fileType || 'image/jpeg');
+                                // PDF için doğru mimeType gönder
+                                const mimeType = isPDF ? 'application/pdf' : (record.fileType || 'image/jpeg');
+                                formData.append('mimeType', mimeType);
                                 
-                                console.log('Gönderilen veri boyutu:', Math.round(formData.toString().length / 1024), 'KB');
+                                console.log('Gönderilen veri:', {
+                                    fileName: record.fileName,
+                                    mimeType: mimeType,
+                                    boyut: Math.round(formData.toString().length / 1024) + ' KB',
+                                    isPDF: isPDF
+                                });
                                 
                                 const controller = new AbortController();
                                 const timeout = isMobile ? 240000 : 120000;
