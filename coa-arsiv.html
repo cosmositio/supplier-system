@@ -1578,12 +1578,22 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // Mobil için daha agresif sıkıştırma - 150KB (hata oranını azalt)
+                        // PDF ve çok sayfalı dokümanlar için YÜKSEK KALİTE (500KB)
+                        // Tek sayfa image'ler için orta kalite (300KB)
+                        const isPDF = record.fileType && record.fileType.includes('pdf');
                         const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
-                        const targetSize = isMobile ? 150 : 200; // KB
+                        
+                        let targetSize;
+                        if (isPDF || record.fileData.length > 3000000) { // 3MB'dan büyükse çok sayfalı olabilir
+                            targetSize = 500; // PDF ve büyük dosyalar için 500KB (yüksek kalite)
+                            console.log('📄 PDF/Çok sayfalı doküman - Yüksek kalite (500KB)');
+                        } else {
+                            targetSize = isMobile ? 250 : 300; // Tek sayfa için 250-300KB
+                            console.log('📷 Tek sayfa image - Orta kalite (' + targetSize + 'KB)');
+                        }
+                        
                         const compressedData = await compressForSheets(record.fileData, targetSize);
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
-                        console.log('Cihaz:', isMobile ? 'Mobil' : 'Desktop', '- Hedef:', targetSize + 'KB');
                         
                         // fetch() ile POST (XMLHttpRequest CORS problemi yaratıyor)
                         let lastError = null;
@@ -2007,7 +2017,7 @@
             });
         }
         
-        // Sheets için özel sıkıştırma (max 15KB hedef - URL limiti için)
+        // Sheets için özel sıkıştırma - PDF ve çok sayfalılar için yüksek kalite
         async function compressForSheets(dataUrl, maxSizeKB = 250) {
             return new Promise((resolve, reject) => {
                 // PDF ise thumbnail olarak dönüştür
@@ -2030,8 +2040,21 @@
                     let height = img.height;
                     const maxSize = maxSizeKB * 1024;
                     
-                    // Hedef boyuta göre başlangıç boyutu ayarla
-                    let maxDim = maxSizeKB >= 200 ? 2000 : (maxSizeKB >= 100 ? 1600 : (maxSizeKB >= 50 ? 1000 : 600));
+                    // Hedef boyuta göre başlangıç boyutu ayarla - YÜKSEK KALİTE
+                    let maxDim;
+                    if (maxSizeKB >= 500) {
+                        maxDim = 3000; // 500KB+ için çok yüksek çözünürlük (PDF/çok sayfalı)
+                    } else if (maxSizeKB >= 300) {
+                        maxDim = 2400; // 300KB+ için yüksek çözünürlük
+                    } else if (maxSizeKB >= 200) {
+                        maxDim = 2000;
+                    } else if (maxSizeKB >= 100) {
+                        maxDim = 1600;
+                    } else if (maxSizeKB >= 50) {
+                        maxDim = 1000;
+                    } else {
+                        maxDim = 600;
+                    }
                     
                     if (width > maxDim || height > maxDim) {
                         if (width > height) {
@@ -2049,8 +2072,22 @@
                     ctx.fillRect(0, 0, width, height);
                     ctx.drawImage(img, 0, 0, width, height);
                     
-                    // Kalite başlangıcı
-                    let quality = maxSizeKB >= 200 ? 0.90 : (maxSizeKB >= 100 ? 0.85 : (maxSizeKB >= 50 ? 0.7 : 0.6));
+                    // Kalite başlangıcı - YÜKSEK KALİTE
+                    let quality;
+                    if (maxSizeKB >= 500) {
+                        quality = 0.95; // 500KB+ için çok yüksek kalite
+                    } else if (maxSizeKB >= 300) {
+                        quality = 0.92; // 300KB için yüksek kalite
+                    } else if (maxSizeKB >= 200) {
+                        quality = 0.90;
+                    } else if (maxSizeKB >= 100) {
+                        quality = 0.85;
+                    } else if (maxSizeKB >= 50) {
+                        quality = 0.7;
+                    } else {
+                        quality = 0.6;
+                    }
+                    
                     let result = canvas.toDataURL('image/jpeg', quality);
                     
                     // Boyut büyükse kaliteyi düşür
