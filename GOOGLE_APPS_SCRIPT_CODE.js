@@ -162,6 +162,12 @@ function doPost(e) {
     }
     
     switch(action) {
+      case 'test':
+        result = testConnection();
+        break;
+      case 'getAllCOA':
+        result = getAllCOA();
+        break;
       case 'addCOA':
         result = addCOA(postData.data || postData);
         break;
