@@ -1227,7 +1227,29 @@
             document.getElementById('statusText').textContent = 'Bağlanıyor...';
             
             try {
-                const data = await jsonp(url + '?action=test');
+                const data = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.timeout = 10000;
+                    
+                    xhr.onload = function() {
+                        if (xhr.status === 200) {
+                            try {
+                                resolve(JSON.parse(xhr.responseText));
+                            } catch(e) {
+                                reject(new Error('JSON parse hatası'));
+                            }
+                        } else {
+                            reject(new Error('HTTP ' + xhr.status));
+                        }
+                    };
+                    
+                    xhr.onerror = () => reject(new Error('Bağlantı hatası'));
+                    xhr.ontimeout = () => reject(new Error('Zaman aşımı'));
+                    
+                    xhr.open('GET', url + '?action=test', true);
+                    xhr.send();
+                });
+                
                 if (data.success) {
                     googleScriptUrl = url;
                     localStorage.setItem('google_script_url', url);
@@ -1259,7 +1281,28 @@
                 console.log('Google Sheets\'ten veri yükleniyor...');
                 showToast('🔄 Veriler yükleniyor...', 'info');
                 
-                const data = await jsonp(googleScriptUrl + '?action=getAllCOA&includeFileData=true');
+                const data = await new Promise((resolve, reject) => {
+                    const xhr = new XMLHttpRequest();
+                    xhr.timeout = 30000;
+                    
+                    xhr.onload = function() {
+                        if (xhr.status === 200) {
+                            try {
+                                resolve(JSON.parse(xhr.responseText));
+                            } catch(e) {
+                                reject(new Error('JSON parse hatası'));
+                            }
+                        } else {
+                            reject(new Error('HTTP ' + xhr.status));
+                        }
+                    };
+                    
+                    xhr.onerror = () => reject(new Error('Bağlantı hatası'));
+                    xhr.ontimeout = () => reject(new Error('Zaman aşımı'));
+                    
+                    xhr.open('GET', googleScriptUrl + '?action=getAllCOA&includeFileData=true', true);
+                    xhr.send();
+                });
                 
                 if (data && data.success) {
                     // Kayıtları al (fileData dahil)
