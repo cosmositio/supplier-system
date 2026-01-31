@@ -1142,12 +1142,17 @@
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
-                const savedUrl = localStorage.getItem('google_script_url');
-                if (savedUrl) {
-                    document.getElementById('googleScriptUrl').value = savedUrl;
-                    googleScriptUrl = savedUrl;
-                    connectGoogleSheets(true);
+                let savedUrl = localStorage.getItem('google_script_url');
+                
+                // Default URL - eğer kayıtlı yoksa bunu kullan
+                if (!savedUrl) {
+                    savedUrl = 'https://script.google.com/macros/s/AKfycbwgJk3nbgdWV-eh2CUAT9rVPxUC3qwtC8Q8mRsAMmVi4PuMou18BA8tR63qvWpkvVId/exec';
+                    localStorage.setItem('google_script_url', savedUrl);
                 }
+                
+                document.getElementById('googleScriptUrl').value = savedUrl;
+                googleScriptUrl = savedUrl;
+                connectGoogleSheets(true);
             }, 100);
         });
         
