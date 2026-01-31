@@ -58,7 +58,7 @@
         }
         
         .container {
-            max-width: 1400px;
+            max-width: 1800px;
             margin: 20px auto;
             padding: 0 20px;
         }
@@ -588,6 +588,49 @@
             padding: 12px 15px;
             text-align: left;
             border-bottom: 1px solid #eee;
+        }
+        
+        /* Hammadde Kodu sütunu için özel genişlik */
+        th:nth-child(3),
+        td:nth-child(3) {
+            min-width: 250px;
+            max-width: 400px;
+            white-space: normal;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+        
+        /* Tedarikçi sütunu için genişlik */
+        th:nth-child(2),
+        td:nth-child(2) {
+            min-width: 180px;
+            max-width: 250px;
+        }
+        
+        /* Tarih ve lot sütunları */
+        th:nth-child(4), th:nth-child(5), th:nth-child(6),
+        td:nth-child(4), td:nth-child(5), td:nth-child(6) {
+            min-width: 100px;
+        }
+        
+        /* Boyut sütunu */
+        th:nth-child(7),
+        td:nth-child(7) {
+            min-width: 80px;
+            text-align: center;
+        }
+        
+        /* Lokasyon sütunu */
+        th:nth-child(8),
+        td:nth-child(8) {
+            min-width: 100px;
+        }
+        
+        /* İşlem sütunu */
+        th:nth-child(9),
+        td:nth-child(9) {
+            min-width: 200px;
+            text-align: center;
         }
         
         th {
