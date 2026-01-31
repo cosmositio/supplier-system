@@ -332,7 +332,7 @@ function uploadFileToDrive(base64Data, fileName, mimeType) {
       thumbnailUrl: 'https://drive.google.com/thumbnail?id=' + fileId + '&sz=w400',
       downloadUrl: 'https://drive.google.com/uc?export=download&id=' + fileId,
       fileName: fileName,
-      size: decoded.length
+      fileSize: file.getSize() // Gerçek dosya boyutu (bytes)
     };
   } catch(error) {
     return { 
@@ -932,6 +932,12 @@ function addCOA(record) {
     }
     record.updatedAt = now;
     
+    // fileSize'ı hesapla (eğer yoksa ve fileData varsa)
+    if (!record.fileSize && record.fileData) {
+      const base64Content = record.fileData.includes(',') ? record.fileData.split(',')[1] : record.fileData;
+      record.fileSize = Math.ceil(base64Content.length * 0.75); // Base64'ten gerçek boyut
+    }
+    
     // fileData'yı Sheet'e kaydet (sıkıştırılmış halde geldi)
     // NOT: fileData silinmiyor, Sheets'e kaydediliyor
     
@@ -1050,11 +1056,21 @@ function updateCOA(id, newData) {
         // Diğer alanları güncelle
         newData.updatedAt = new Date().toISOString();
         
+        // Eğer yeni dosya yükleniyorsa, fileSize'ı hesapla
+        if (newData.hasOwnProperty('fileData') && newData.fileData && !newData.fileSize) {
+          const base64Content = newData.fileData.includes(',') ? newData.fileData.split(',')[1] : newData.fileData;
+          newData.fileSize = Math.ceil(base64Content.length * 0.75);
+        }
+        
         // Mevcut veriyi güncelle
         const row = headers.map((header, j) => {
           // fileData özel durumu: frontend'ten gelmemişse mevcut değeri koru
           if (header === 'fileData') {
             return newData.hasOwnProperty('fileData') && newData.fileData ? newData.fileData : data[i][j];
+          }
+          // fileSize özel durumu: yeni fileData varsa güncelle
+          if (header === 'fileSize') {
+            return newData.hasOwnProperty('fileSize') && newData.fileSize ? newData.fileSize : data[i][j];
           }
           // Normal alanlar: yeni veri varsa güncelle, yoksa mevcut değeri koru
           if (newData.hasOwnProperty(header) && header !== 'id' && header !== 'createdAt') {
