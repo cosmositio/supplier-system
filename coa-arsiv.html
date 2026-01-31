@@ -1210,7 +1210,7 @@
             }
             
             // URL formatını kontrol et
-            if (!url.includes('script.google.com') || !url.includes('/exec')) {
+            if (!url.includes('script.google.com')) {
                 if (!silent) showToast('❌ Geçersiz Google Apps Script URL!', 'error');
                 return;
             }
