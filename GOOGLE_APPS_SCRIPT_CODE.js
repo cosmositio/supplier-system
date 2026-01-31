@@ -790,9 +790,10 @@ function getSheet() {
     sheet.setColumnWidth(2, 150); // supplier
     sheet.setColumnWidth(3, 120); // materialCode
     sheet.setColumnWidth(4, 100); // deliveryDate
-    sheet.setColumnWidth(5, 100); // lotNumber
-    sheet.setColumnWidth(6, 200); // notes
-    sheet.setColumnWidth(7, 150); // location
+    sheet.setColumnWidth(5, 120); // deliveryNo
+    sheet.setColumnWidth(6, 100); // lotNumber
+    sheet.setColumnWidth(7, 200); // notes
+    sheet.setColumnWidth(8, 150); // location
     sheet.setColumnWidth(11, 300); // fileUrl
     
     console.log('Header\'lar eklendi/güncellendi: ' + headers.join(', '));
