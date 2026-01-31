@@ -255,25 +255,48 @@
             try {
                 showStatus('🔄 Kamera başlatılıyor...', 'info');
                 
-                stream = await navigator.mediaDevices.getUserMedia({
+                // Mobil için daha basit konfigürasyon - facingMode: 'environment' yerine user denemesi de ekle
+                const constraints = {
                     video: {
-                        facingMode: 'environment',
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
+                        facingMode: { ideal: 'environment' }, // Ideal olarak arka kamera ama mecburi değil
+                        width: { ideal: 1920, max: 4096 },
+                        height: { ideal: 1080, max: 4096 }
                     }
-                });
+                };
+                
+                console.log('Kamera izni isteniyor...', constraints);
+                
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                
+                console.log('Kamera stream alındı:', stream);
                 
                 const video = document.getElementById('videoElement');
                 video.srcObject = stream;
+                video.setAttribute('playsinline', ''); // iOS için gerekli
+                video.setAttribute('autoplay', '');
                 
-                video.onloadedmetadata = () => {
-                    video.play();
-                    document.getElementById('startBtn').style.display = 'none';
-                    document.getElementById('captureBtn').disabled = false;
-                    showStatus('✅ Belgeyi düz zemine koyun, iyi ışıklandırın ve çerçeveleyin', 'success');
-                };
+                await video.play(); // Play'i await ile çağır
+                
+                document.getElementById('startBtn').style.display = 'none';
+                document.getElementById('captureBtn').disabled = false;
+                showStatus('✅ Belgeyi düz zemine koyun, iyi ışıklandırın ve çerçeveleyin', 'success');
+                
             } catch (error) {
-                showStatus('❌ Kamera hatası: ' + error.message, 'error');
+                console.error('Kamera hatası detay:', error);
+                let errorMsg = 'Kamera hatası: ';
+                
+                if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                    errorMsg = '❌ Kamera izni reddedildi! Lütfen tarayıcı ayarlarından kamera iznini verin.';
+                } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                    errorMsg = '❌ Kamera bulunamadı! Lütfen cihazınızda kamera olduğundan emin olun.';
+                } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+                    errorMsg = '❌ Kamera meşgul! Başka bir uygulama kamerayı kullanıyor olabilir.';
+                } else {
+                    errorMsg = '❌ Kamera hatası: ' + error.message;
+                }
+                
+                showStatus(errorMsg, 'error');
+                alert(errorMsg);
             }
         }
 
