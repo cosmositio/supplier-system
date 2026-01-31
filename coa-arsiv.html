@@ -3145,25 +3145,15 @@
             const fileSizeKB = Math.round(file.size / 1024);
             showToast('📁 Dosya: ' + file.name + ' (' + fileSizeKB + 'KB)', 'info');
             
-            // PDF sıkıştırma (400KB üstü)
-            if (file.type === 'application/pdf' && file.size > 400 * 1024) {
-                showToast('🔄 PDF resme dönüştürülüyor ve sıkıştırılıyor...', 'info');
-                
-                const compressed = await compressPDF(file, 400);
-                selectedFileData = compressed.data;
-                
-                // Dosya tipini image/jpeg olarak değiştir
-                selectedFile = new File([selectedFile], file.name.replace('.pdf', '.jpg'), { type: 'image/jpeg' });
-                
-                if (compressed.compressed) {
-                    const newSizeKB = Math.round(compressed.newSize / 1024);
-                    showToast('✅ PDF sıkıştırıldı: ' + fileSizeKB + 'KB -> ' + newSizeKB + 'KB', 'success');
-                    preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' (resme dönüştürüldü)</div>' +
-                        '<img src="' + selectedFileData + '" class="preview-image" style="max-height:300px;">';
-                } else {
-                    showToast('⚠️ PDF dönüştürülemedi: ' + (compressed.error || ''), 'warning');
-                    preview.innerHTML = '<div class="file-name" style="color:orange;">📄 ' + file.name + '</div>';
-                }
+            // PDF - ORJİNAL olarak sakla, resme dönüştürme
+            if (file.type === 'application/pdf') {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    selectedFileData = e.target.result;
+                    preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' (PDF - orjinal kalite)</div>';
+                    showToast('✅ PDF hazır (orjinal kalite)', 'success');
+                };
+                reader.readAsDataURL(file);
             }
             // Resim sıkıştırma (400KB üstü)
             else if (file.type.startsWith('image/') && file.size > 400 * 1024) {
@@ -3178,19 +3168,6 @@
                 
                 preview.innerHTML = '<div class="file-name">📷 ' + file.name + ' (sıkıştırılmış)</div>' +
                     '<img src="' + selectedFileData + '" class="preview-image">';
-            }
-            // Küçük PDF (400KB altı)
-            else if (file.type === 'application/pdf') {
-                showToast('🔄 PDF resme dönüştürülüyor...', 'info');
-                
-                const compressed = await compressPDF(file, 400);
-                selectedFileData = compressed.data;
-                selectedFile = new File([selectedFile], file.name.replace('.pdf', '.jpg'), { type: 'image/jpeg' });
-                
-                const newSizeKB = Math.round(compressed.newSize / 1024);
-                showToast('✅ PDF dönüştürüldü: ' + newSizeKB + 'KB', 'success');
-                preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' (resme dönüştürüldü)</div>' +
-                    '<img src="' + selectedFileData + '" class="preview-image" style="max-height:300px;">';
             }
             // Küçük resim veya diğer dosyalar
             else {
