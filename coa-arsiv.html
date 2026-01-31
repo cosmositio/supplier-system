@@ -1631,6 +1631,7 @@
                         // PDF ve çok sayfalı için sıkıştırma YOK
                         const isPDF = record.fileType && record.fileType.includes('pdf');
                         const isLargeFile = record.fileData.length > 3000000; // 3MB+
+                        const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
                         
                         let uploadData;
                         if (isPDF || isLargeFile) {
@@ -1639,7 +1640,6 @@
                             console.log('📄 PDF/Çok sayfalı - ORJİNAL dosya yükleniyor (sıkıştırmasız):', Math.round(uploadData.length / 1024), 'KB');
                         } else {
                             // Tek sayfa için hafif sıkıştırma
-                            const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
                             const targetSize = isMobile ? 350 : 400;
                             uploadData = await compressForSheets(record.fileData, targetSize);
                             console.log('📷 Tek sayfa - Hafif sıkıştırma:', Math.round(uploadData.length / 1024), 'KB');
