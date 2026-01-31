@@ -208,12 +208,18 @@ function createResponse(result, callback) {
     // JSONP response
     const response = ContentService.createTextOutput(callback + '(' + output + ')');
     response.setMimeType(ContentService.MimeType.JAVASCRIPT);
+    response.setHeader('Access-Control-Allow-Origin', '*');
+    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return response;
   }
   
   // JSON response
   const response = ContentService.createTextOutput(output);
   response.setMimeType(ContentService.MimeType.JSON);
+  response.setHeader('Access-Control-Allow-Origin', '*');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   return response;
 }
 
