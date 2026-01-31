@@ -111,15 +111,10 @@ function doGet(e) {
   return createResponse(result, callback);
 }
 
-// CORS preflight request handler (OPTIONS)
+// CORS otomatik - manuel header eklemeye gerek yok
 function doOptions(e) {
-  return ContentService
-    .createTextOutput('')
-    .setMimeType(ContentService.MimeType.JSON)
-    .setHeader('Access-Control-Allow-Origin', '*')
-    .setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-    .setHeader('Access-Control-Allow-Headers', 'Content-Type')
-    .setHeader('Access-Control-Max-Age', '86400');
+  return ContentService.createTextOutput('')
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function doPost(e) {
@@ -212,21 +207,13 @@ function createResponse(result, callback) {
   
   if (callback) {
     // JSONP response
-    const response = ContentService.createTextOutput(callback + '(' + output + ')');
-    response.setMimeType(ContentService.MimeType.JAVASCRIPT);
-    response.setHeader('Access-Control-Allow-Origin', '*');
-    response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return response;
+    return ContentService.createTextOutput(callback + '(' + output + ')')
+      .setMimeType(ContentService.MimeType.JAVASCRIPT);
   }
   
   // JSON response
-  const response = ContentService.createTextOutput(output);
-  response.setMimeType(ContentService.MimeType.JSON);
-  response.setHeader('Access-Control-Allow-Origin', '*');
-  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  return response;
+  return ContentService.createTextOutput(output)
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function parseFormData(contents) {
