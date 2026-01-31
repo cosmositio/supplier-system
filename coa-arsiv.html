@@ -1539,11 +1539,14 @@
                             fileName: record.fileName || '',
                             fileType: record.fileType || '',
                             fileUrl: record.fileUrl || '',
-                            fileData: record.fileData || '', // Dosya verisi dahil
-                            fileSize: record.fileSize || 0, // Dosya boyutu (bytes)
+                            // fileData boşsa (PDF/çok sayfalı), Drive\'dan yüklenecek
+                            fileData: record.fileData || '',
+                            fileSize: record.fileSize || 0,
                             driveFileId: record.driveFileId || '',
                             createdAt: record.createdAt || '',
-                            updatedAt: record.updatedAt || ''
+                            updatedAt: record.updatedAt || '',
+                            // Eğer fileData boş ama driveFileId varsa, direkt Drive linkini kullan
+                            useDirectDriveLink: (!record.fileData && record.driveFileId) ? true : false
                         };
                     });
                     
@@ -1718,6 +1721,15 @@
                 }
                 
                 // Kayıt verisini hazırla
+                // PDF ve çok sayfalı dokümanlar için fileData kaydedilmez (sadece Drive link)
+                const isPDF = record.fileType && record.fileType.includes('pdf');
+                const isMultiPage = record.fileData && record.fileData.length > 3000000; // 3MB+
+                const shouldSkipFileData = isPDF || isMultiPage;
+                
+                if (shouldSkipFileData) {
+                    console.log('📄 PDF/Çok sayfalı doküman - fileData Sheets\'e kaydedilmiyor (sadece Drive link)');
+                }
+                
                 const saveData = {
                     id: record.id,
                     supplier: record.supplier,
@@ -1731,7 +1743,7 @@
                     fileType: record.fileType || '',
                     fileUrl: fileUrl,
                     driveFileId: driveFileId,
-                    fileData: '', // Sheets'e base64 koymuyoruz
+                    fileData: shouldSkipFileData ? '' : '', // PDF ve çok sayfalılar için boş
                     fileSize: fileSize || record.fileSize || 0, // Dosya boyutu
                     createdAt: record.createdAt || new Date().toISOString()
                 };
@@ -3570,7 +3582,14 @@
                 return;
             }
             
-            // Önce yerel dosya verisi kontrol et (localStorage'da)
+            // PDF veya çok sayfalı dokümanlar için direkt Drive link kullan (useDirectDriveLink flag'i)
+            if (record.useDirectDriveLink && record.fileUrl) {
+                console.log('📄 PDF/Çok sayfalı doküman - Direkt Drive\'dan açılıyor (tam kalite)');
+                window.open(record.fileUrl, '_blank');
+                return;
+            }
+            
+            // Önce yerel dosya verisi kontrol et (localStorage'da) - tek sayfa için
             if (record.fileData) {
                 if (record.fileType === 'application/pdf' || record.fileName?.endsWith('.pdf')) {
                     const pdfWindow = window.open();
