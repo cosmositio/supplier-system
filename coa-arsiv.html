@@ -1584,7 +1584,7 @@
                         console.log('Sıkıştırılmış boyut:', Math.round(compressedData.length / 1024), 'KB');
                         console.log('Cihaz:', isMobile ? 'Mobil' : 'Desktop', '- Hedef:', targetSize + 'KB');
                         
-                        // XMLHttpRequest POST (büyük veri için) - 3 deneme retry
+                        // fetch() ile POST (XMLHttpRequest CORS problemi yaratıyor)
                         let lastError = null;
                         let uploadResult = null;
                         
@@ -1596,51 +1596,36 @@
                                     await new Promise(resolve => setTimeout(resolve, 2000)); // 2 saniye bekle
                                 }
                                 
-                                uploadResult = await new Promise((resolve, reject) => {
-                            const xhr = new XMLHttpRequest();
-                            // Mobil için çok uzun timeout - 240 saniye (4 dakika)
-                            xhr.timeout = isMobile ? 240000 : 120000;
-                            
-                            xhr.onload = function() {
-                                if (xhr.status === 200) {
-                                    try {
-                                        const result = JSON.parse(xhr.responseText);
-                                        resolve(result);
-                                    } catch(e) {
-                                        reject(new Error('JSON parse hatası'));
-                                    }
-                                } else {
-                                    reject(new Error('HTTP ' + xhr.status));
+                                // fetch() ile POST - CORS uyumlu
+                                const formData = new URLSearchParams();
+                                formData.append('action', 'uploadFile');
+                                formData.append('fileData', compressedData);
+                                formData.append('fileName', record.fileName);
+                                formData.append('mimeType', record.fileType || 'image/jpeg');
+                                
+                                console.log('Gönderilen veri boyutu:', Math.round(formData.toString().length / 1024), 'KB');
+                                
+                                const controller = new AbortController();
+                                const timeout = isMobile ? 240000 : 120000;
+                                const timeoutId = setTimeout(() => controller.abort(), timeout);
+                                
+                                const response = await fetch(googleScriptUrl, {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/x-www-form-urlencoded',
+                                    },
+                                    body: formData.toString(),
+                                    signal: controller.signal
+                                });
+                                
+                                clearTimeout(timeoutId);
+                                
+                                if (!response.ok) {
+                                    throw new Error('HTTP ' + response.status);
                                 }
-                            };
-                            
-                            xhr.onerror = () => reject(new Error('Bağlantı hatası'));
-                            xhr.ontimeout = () => reject(new Error('Zaman aşımı (' + (xhr.timeout/1000) + ' saniye)'));
-                            
-                            // Progress tracking for mobile
-                            xhr.upload.onprogress = (e) => {
-                                if (e.lengthComputable) {
-                                    const percent = Math.round((e.loaded / e.total) * 100);
-                                    console.log('Upload progress:', percent + '%');
-                                    if (percent % 20 === 0) { // Her %20'de bildir
-                                        showToast(`📤 Yükleniyor: ${percent}%`, 'info', 1000);
-                                    }
-                                }
-                            };
-                            
-                            xhr.open('POST', googleScriptUrl, true);
-                            xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-                            
-                            const formData = new URLSearchParams();
-                            formData.append('action', 'uploadFile');
-                            formData.append('fileData', compressedData);
-                            formData.append('fileName', record.fileName);
-                            formData.append('mimeType', record.fileType || 'image/jpeg');
-                            
-                            console.log('Gönderilen veri boyutu:', Math.round(formData.toString().length / 1024), 'KB');
-                            xhr.send(formData.toString());
-                        });
-                        
+                                
+                                uploadResult = await response.json();
+                                
                                 // Başarılıysa loop'tan çık
                                 break;
                             } catch (attemptError) {

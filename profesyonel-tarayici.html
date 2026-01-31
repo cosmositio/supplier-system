@@ -193,7 +193,7 @@
 
             <div class="camera-container">
                 <video id="videoElement" autoplay playsinline></video>
-                <canvas id="canvas"></canvas>
+                <canvas id="canvas" willReadFrequently="true"></canvas>
             </div>
 
             <div class="controls">
@@ -422,43 +422,34 @@
                     const finalGray = new cv.Mat();
                     cv.cvtColor(dst, finalGray, cv.COLOR_RGBA2GRAY);
                     
-                    // 9. Bilateral Filter - gürültüyü temizle ama yazı kenarlarını koru
-                    const bilateralTemp = new cv.Mat();
-                    cv.bilateralFilter(finalGray, bilateralTemp, 9, 75, 75);
-                    finalGray.delete();
+                    // 9. Gaussian Blur - gürültüyü azalt (daha stabil)
+                    cv.GaussianBlur(finalGray, finalGray, new cv.Size(5, 5), 0);
                     
-                    // 10. CLAHE (Contrast Limited Adaptive Histogram Equalization) - profesyonel kontrast iyileştirme
-                    const claheResult = new cv.Mat();
-                    const clahe = new cv.CLAHE(2.0, new cv.Size(8, 8));
-                    clahe.apply(bilateralTemp, claheResult);
-                    bilateralTemp.delete();
+                    // 10. Histogram Equalization - kontrast iyileştirme
+                    cv.equalizeHist(finalGray, finalGray);
                     
-                    // 11. Otsu's Binarization - otomatik eşik belirleme (adaptive'den çok daha iyi)
-                    const binaryResult = new cv.Mat();
-                    cv.threshold(claheResult, binaryResult, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
-                    claheResult.delete();
+                    // 11. Otsu's Binarization - otomatik eşik belirleme
+                    cv.threshold(finalGray, finalGray, 0, 255, cv.THRESH_BINARY + cv.THRESH_OTSU);
                     
-                    // 12. Morphological Opening - küçük gürültü noktalarını temizle
-                    const morphKernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(2, 2));
-                    const morphResult = new cv.Mat();
-                    cv.morphologyEx(binaryResult, morphResult, cv.MORPH_OPEN, morphKernel);
-                    morphKernel.delete();
-                    binaryResult.delete();
+                    // 12. Median Blur - son gürültü temizleme
+                    cv.medianBlur(finalGray, finalGray, 3);
                     
                     // 13. Convert back to RGBA
-                    cv.cvtColor(morphResult, dst, cv.COLOR_GRAY2RGBA);
-                    morphResult.delete();
+                    const finalRGBA = new cv.Mat();
+                    cv.cvtColor(finalGray, finalRGBA, cv.COLOR_GRAY2RGBA);
+                    finalGray.delete();
+                    dst.delete();
                     
                     // 14. Hafif sharpen (yazıları netleştir)
                     const sharpKernel = cv.matFromArray(3, 3, cv.CV_32F, [
-                        0, -0.8, 0,
-                        -0.8, 4.2, -0.8,
-                        0, -0.8, 0
+                        0, -1, 0,
+                        -1, 5, -1,
+                        0, -1, 0
                     ]);
                     const sharpResult = new cv.Mat();
-                    cv.filter2D(dst, sharpResult, cv.CV_8U, sharpKernel);
+                    cv.filter2D(finalRGBA, sharpResult, cv.CV_8U, sharpKernel);
                     sharpKernel.delete();
-                    dst.delete();
+                    finalRGBA.delete();
                     
                     // 15. Display
                     canvas.width = w;
