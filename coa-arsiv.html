@@ -2094,20 +2094,31 @@
             });
         }
         
-        // Sheets için özel sıkıştırma - PDF ve çok sayfalılar için yüksek kalite
+        // Sheets için özel sıkıştırma - SADECE RESİMLER İÇİN
         async function compressForSheets(dataUrl, maxSizeKB = 250) {
             return new Promise((resolve, reject) => {
-                // PDF ise thumbnail olarak dönüştür
-                if (dataUrl.includes('application/pdf')) {
-                    console.warn('PDF dosyası - sadece meta bilgisi kaydedilecek');
-                    resolve('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iIGZvbnQtc2l6ZT0iMjQiPvCfk4Q8L3RleHQ+PC9zdmc+');
+                // PDF, Excel, Word gibi dosyalar için direkt geri dön (sıkıştırma YOK)
+                if (dataUrl.includes('application/pdf') || 
+                    dataUrl.includes('spreadsheet') || 
+                    dataUrl.includes('wordprocessing') ||
+                    dataUrl.includes('application/vnd.ms-excel') ||
+                    dataUrl.includes('application/vnd.openxmlformats')) {
+                    console.warn('Office/PDF dosyası - sıkıştırma atlanıyor, orjinal döndürülüyor');
+                    resolve(dataUrl);
+                    return;
+                }
+                
+                // Resim değilse direkt geri dön
+                if (!dataUrl.startsWith('data:image/')) {
+                    console.warn('Resim değil - sıkıştırma atlanıyor');
+                    resolve(dataUrl);
                     return;
                 }
                 
                 const img = new Image();
                 img.onerror = () => {
                     console.error('Resim yüklenemedi');
-                    resolve('');
+                    resolve(dataUrl); // Hata durumunda orjinali dön
                 };
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
