@@ -1115,17 +1115,17 @@
             }
             
             // Doğru URL - localStorage'daki eski URL'yi güncelle
-            const correctUrl = 'https://script.google.com/macros/s/AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw/exec';
+            const correctUrl = 'https://script.google.com/macros/s/AKfycbzlZBmNGbsQTDLBqGkDto3FWDb26Jc4lk2OhER5OhgmmU1QiPjgdi27goEVTbhqlDFIVw/exec';
             
             // Load saved URL and connect (delayed to ensure all functions are loaded)
             setTimeout(function() {
                 let savedUrl = localStorage.getItem('google_script_url');
                 
                 // Eski veya yanlış URL ise güncelle
-                if (!savedUrl || !savedUrl.includes('AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw')) {
+                if (!savedUrl || savedUrl.includes('AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw')) {
                     savedUrl = correctUrl;
                     localStorage.setItem('google_script_url', correctUrl);
-                    console.log('URL güncellendi:', correctUrl);
+                    console.log('✅ URL güncellendi:', correctUrl);
                 }
                 
                 document.getElementById('googleScriptUrl').value = savedUrl;
