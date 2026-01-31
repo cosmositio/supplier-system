@@ -1017,7 +1017,7 @@
         let coaData = [];
         let suppliers = [];
         let selectedSuppliers = new Set(); // Seçili tedarikçiler
-        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw/exec';
+        let googleScriptUrl = 'https://script.google.com/macros/s/AKfycbzlZBmNGbsQTDLBqGkDto3FWDb26Jc4lk2OhER5OhgmmU1QiPjgdi27goEVTbhqlDFIVw/exec';
         let selectedFile = null;
         let selectedFileData = null;
         let editMode = false;
@@ -1280,6 +1280,9 @@
                     renderTable();
                     updateUI();
                     
+                    // Sheets'ten istatistikleri de yükle
+                    loadStatsFromGoogleSheets();
+                    
                     showToast('✅ ' + coaData.length + ' kayıt yüklendi (' + withFiles + ' dosyalı)', 'success');
                 } else {
                     console.error('Veri yükleme hatası:', data?.error);
@@ -1293,6 +1296,27 @@
                 loadFromLocalStorage();
                 renderTable();
                 showToast('⚠️ Çevrimdışı mod - yerel veriler kullanılıyor', 'warning');
+            }
+        }
+        
+        async function loadStatsFromGoogleSheets() {
+            if (!googleScriptUrl) return;
+            
+            try {
+                const url = googleScriptUrl + '?action=getStats';
+                const result = await jsonp(url);
+                
+                if (result && result.success && result.data) {
+                    const stats = result.data;
+                    
+                    // Toplam dosya boyutunu güncelle
+                    if (stats.totalFileSizeMB !== undefined) {
+                        document.getElementById('statTotalSize').textContent = stats.totalFileSizeMB + ' MB';
+                        console.log('📊 Sheets\'ten dosya boyutu güncellendi:', stats.totalFileSizeMB, 'MB');
+                    }
+                }
+            } catch (error) {
+                console.error('İstatistik yükleme hatası:', error);
             }
         }
         
