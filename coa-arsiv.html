@@ -985,6 +985,7 @@
                                 <th>Hammadde Kodu</th>
                                 <th>İrsaliye Tarihi</th>
                                 <th>Lot No</th>
+                                <th>Boyut</th>
                                 <th>Lokasyon</th>
                                 <th>İşlem</th>
                             </tr>
@@ -2959,6 +2960,18 @@
                 
                 const onlineIcon = c.fileData ? ' 💾' : (c.fileUrl ? ' ☁️' : '');
                 
+                // Dosya boyutunu hesapla
+                let fileSizeDisplay = '-';
+                if (c.fileSize) {
+                    const sizeInMB = (c.fileSize / (1024 * 1024)).toFixed(2);
+                    fileSizeDisplay = sizeInMB + ' MB';
+                } else if (c.fileData) {
+                    const base64Length = c.fileData.length;
+                    const sizeInBytes = Math.ceil(base64Length * 0.75);
+                    const sizeInMB = (sizeInBytes / (1024 * 1024)).toFixed(2);
+                    fileSizeDisplay = sizeInMB + ' MB';
+                }
+                
                 return '<tr>' +
                     '<td><input type="checkbox" class="row-checkbox" data-id="' + c.id + '" onchange="toggleRowSelection(\'' + c.id + '\')" ' + isChecked + ' style="cursor: pointer;"></td>' +
                     '<td>' + filePreview + '</td>' +
@@ -2966,6 +2979,7 @@
                     '<td>' + c.materialCode + '</td>' +
                     '<td>' + formatDate(c.deliveryDate) + '</td>' +
                     '<td>' + (c.lotNumber || '-') + '</td>' +
+                    '<td style="font-size: 0.85em; color: #666;">' + fileSizeDisplay + '</td>' +
                     '<td>' + (c.location || '-') + '</td>' +
                     '<td class="actions">' +
                         '<button class="btn btn-secondary btn-sm" onclick="viewFile(\'' + c.id + '\')" title="Görüntüle">👁</button>' +
