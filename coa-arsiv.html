@@ -7,6 +7,8 @@
     <link rel="icon" type="image/png" href="assets/favicon.png">
     <!-- PDF.js for PDF compression -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <!-- SheetJS for Excel reading -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -876,11 +878,11 @@
                         </div>
                     </div>
                     <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
-                        <small style="color:#666; font-size:0.85em; flex: 1; min-width: 200px;">Ana sayfada Excel yükleyince tedarikçiler otomatik gelir</small>
-                        <label for="supplierFileInput" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; cursor: pointer; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: all 0.3s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
-                            📂 Tedarikçi JSON
+                        <small style="color:#666; font-size:0.85em; flex: 1; min-width: 200px;">Excel dosyası yükleyerek tedarikçi ve hammadde listelerini otomatik doldurun</small>
+                        <label for="excelFileInput" style="background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%); color: white; padding: 10px 20px; border-radius: 8px; font-size: 0.9em; cursor: pointer; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 8px; transition: all 0.3s; box-shadow: 0 2px 8px rgba(46, 204, 113, 0.3);" onmouseover="this.style.transform='scale(1.05)'; this.style.boxShadow='0 4px 12px rgba(46, 204, 113, 0.4)'" onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 2px 8px rgba(46, 204, 113, 0.3)'">
+                            📊 Excel Yükle
                         </label>
-                        <input type="file" id="supplierFileInput" accept=".json" onchange="loadSupplierJSON(event)" style="display: none;">
+                        <input type="file" id="excelFileInput" accept=".xlsx,.xls" onchange="loadExcelFile(event)" style="display: none;">
                     </div>
                 </div>
                 
@@ -893,12 +895,8 @@
                                onfocus="showMaterialDropdown()" 
                                style="width: 100%;">
                         <div id="materialDropdown" class="supplier-dropdown-list" style="display: none; position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid #ddd; border-radius: 0 0 8px 8px; max-height: 250px; overflow-y: auto; z-index: 1000; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                            <div style="padding: 8px; background: #f8f9fa; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center;">
-                                <span id="materialDropdownCount" style="font-size: 0.85em; color: #666;">0 hammadde</span>
-                                <label for="materialFileInput" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; padding: 4px 10px; border-radius: 4px; font-size: 0.75em; cursor: pointer; font-weight: 600;">
-                                    📂 Hammadde JSON
-                                </label>
-                                <input type="file" id="materialFileInput" accept=".json" onchange="loadMaterialJSON(event)" style="display: none;">
+                            <div style="padding: 8px; background: #f8f9fa; border-bottom: 1px solid #ddd;">
+                                <span id="materialDropdownCount" style="font-size: 0.85em; color: #666; font-weight: 500;">0 hammadde</span>
                             </div>
                             <div id="materialDropdownItems"></div>
                         </div>
@@ -2021,6 +2019,125 @@
             };
             
             reader.readAsText(file);
+            
+            // Input'u temizle (aynı dosyayı tekrar yükleyebilmek için)
+            event.target.value = '';
+        }
+        
+        // Excel dosyasından tedarikçi ve hammadde listesi yükle
+        function loadExcelFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            showToast('📊 Excel dosyası okunuyor...', 'info');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    
+                    // İlk sayfayı al
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+                    
+                    if (jsonData.length < 2) {
+                        showToast('⚠️ Excel dosyası boş!', 'warning');
+                        return;
+                    }
+                    
+                    // Header satırını bul
+                    const headers = jsonData[0];
+                    
+                    // Sütun indekslerini bul
+                    let cariAdiIndex = -1;
+                    let stokKoduIndex = -1;
+                    let stokAdiIndex = -1;
+                    
+                    headers.forEach((header, index) => {
+                        const h = String(header).trim().toLowerCase();
+                        if (h === 'cari adı' || h === 'cari adi' || h === 'cariadı' || h === 'cariadi') {
+                            cariAdiIndex = index;
+                        }
+                        if (h === 'stok kodu' || h === 'stokkodu') {
+                            stokKoduIndex = index;
+                        }
+                        if (h === 'stok adı' || h === 'stok adi' || h === 'stokadı' || h === 'stokadi') {
+                            stokAdiIndex = index;
+                        }
+                    });
+                    
+                    // Kontrol
+                    if (cariAdiIndex === -1 || stokKoduIndex === -1 || stokAdiIndex === -1) {
+                        showToast('❌ Excel\'de gerekli sütunlar bulunamadı! (Cari Adı, Stok Kodu, Stok Adı)', 'error');
+                        console.error('Bulunan headers:', headers);
+                        console.error('Cari Adı indeks:', cariAdiIndex, 'Stok Kodu indeks:', stokKoduIndex, 'Stok Adı indeks:', stokAdiIndex);
+                        return;
+                    }
+                    
+                    // Verileri topla
+                    const supplierSet = new Set();
+                    const materialMap = new Map(); // stokKodu -> {code, name}
+                    
+                    for (let i = 1; i < jsonData.length; i++) {
+                        const row = jsonData[i];
+                        
+                        // Tedarikçi adı (tekrarlayanları alma)
+                        const cariAdi = row[cariAdiIndex];
+                        if (cariAdi && String(cariAdi).trim()) {
+                            supplierSet.add(String(cariAdi).trim());
+                        }
+                        
+                        // Hammadde kodu ve adı (tekrarlayan kodları alma)
+                        const stokKodu = row[stokKoduIndex];
+                        const stokAdi = row[stokAdiIndex];
+                        if (stokKodu && String(stokKodu).trim() && stokAdi && String(stokAdi).trim()) {
+                            const code = String(stokKodu).trim();
+                            const name = String(stokAdi).trim();
+                            
+                            // Tekrarlayan kodları kontrol et
+                            if (!materialMap.has(code)) {
+                                materialMap.set(code, { code, name });
+                            }
+                        }
+                    }
+                    
+                    // Array'lere çevir
+                    const supplierArray = Array.from(supplierSet).sort();
+                    const materialArray = Array.from(materialMap.values());
+                    
+                    if (supplierArray.length === 0 && materialArray.length === 0) {
+                        showToast('⚠️ Excel dosyasında veri bulunamadı!', 'warning');
+                        return;
+                    }
+                    
+                    // LocalStorage'a kaydet
+                    if (supplierArray.length > 0) {
+                        localStorage.setItem('supplierListForCOA', JSON.stringify(supplierArray));
+                        suppliers = supplierArray;
+                        updateSupplierDropdowns();
+                    }
+                    
+                    if (materialArray.length > 0) {
+                        saveMaterials(materialArray);
+                        materials = materialArray;
+                        updateMaterialDropdown();
+                    }
+                    
+                    showToast(`✅ Excel yüklendi! ${supplierArray.length} tedarikçi, ${materialArray.length} hammadde`, 'success');
+                    console.log('✅ Excel\'den yüklendi:');
+                    console.log('- Tedarikçiler:', supplierArray.length);
+                    console.log('- Hammaddeler:', materialArray.length);
+                    console.log('İlk 3 tedarikçi:', supplierArray.slice(0, 3));
+                    console.log('İlk 3 hammadde:', materialArray.slice(0, 3));
+                    
+                } catch (error) {
+                    console.error('Excel okuma hatası:', error);
+                    showToast('❌ Excel okuma hatası: ' + error.message, 'error');
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
             
             // Input'u temizle (aynı dosyayı tekrar yükleyebilmek için)
             event.target.value = '';
