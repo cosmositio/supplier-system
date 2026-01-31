@@ -1117,6 +1117,19 @@
                     <div style="color: #999; font-size: 0.85em; margin-top: 8px;">(.xlsx, .xls)</div>
                     <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(event)">
                 </div>
+                <div style="margin-top: 15px; padding: 12px; background: #f0f7ff; border-radius: 8px; border: 2px solid #2196F3;">
+                    <label style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 600; color: #1976D2;">
+                        <input type="checkbox" id="saveSuppliersCheckbox" checked style="width: 20px; height: 20px; cursor: pointer;">
+                        <span>📋 Tedarikçi listesini COA Arşiv için indir</span>
+                    </label>
+                    <small style="color: #666; margin-left: 30px; display: block; margin-top: 5px;">Excel yüklendiğinde JSON dosyası otomatik indirilir</small>
+                    <button type="button" id="downloadSupplierBtn" onclick="downloadSupplierListJSON()" style="margin-top: 10px; margin-left: 30px; background: linear-gradient(135deg, #2d5a3d 0%, #4a8f5c 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; display: none;">
+                        💾 Tedarikçi Listesini İndir (JSON)
+                    </button>
+                    <button type="button" onclick="createMobileCOALink()" style="margin-top: 10px; margin-left: 10px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);">
+                        📱 Mobil COA Arşiv Linki
+                    </button>
+                </div>
             </div>
 
             <div class="upload-section" id="secondUploadSection" style="display: none; margin: 0;">
@@ -2844,6 +2857,139 @@
             } catch (e) {
                 console.error('❌ Tedarikçi listesi kaydetme hatası:', e);
             }
+        }
+        
+        // Tedarikçi listesini JSON dosyası olarak indir
+        function downloadSupplierListJSON() {
+            try {
+                const supplierNames = allResults
+                    .map(r => r.name)
+                    .filter(n => n && !n.startsWith('[Tedarikçi Adı Yok'))
+                    .sort();
+                
+                if (supplierNames.length === 0) {
+                    showAlert('⚠️ Kaydedilecek tedarikçi yok', 'warning');
+                    return;
+                }
+                
+                const jsonData = {
+                    version: '1.0',
+                    createdAt: new Date().toISOString(),
+                    count: supplierNames.length,
+                    suppliers: supplierNames
+                };
+                
+                const blob = new Blob([JSON.stringify(jsonData, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `tedarikciler_${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                console.log('✅ Tedarikçi listesi JSON olarak indirildi:', supplierNames.length, 'tedarikçi');
+                showAlert(`✅ ${supplierNames.length} tedarikçi listesi indirildi!`, 'success');
+            } catch (e) {
+                console.error('❌ JSON indirme hatası:', e);
+                showAlert('❌ İndirme hatası: ' + e.message, 'error');
+            }
+        }
+        
+        // Mobil için COA arşiv linki oluştur
+        function createMobileCOALink() {
+            try {
+                const supplierNames = allResults
+                    .map(r => r.name)
+                    .filter(n => n && !n.startsWith('[Tedarikçi Adı Yok'))
+                    .sort();
+                
+                if (supplierNames.length === 0) {
+                    showAlert('⚠️ Önce Excel dosyası yükleyin!', 'warning');
+                    return;
+                }
+                
+                // Tedarikçileri base64 encode et
+                const data = btoa(encodeURIComponent(JSON.stringify(supplierNames)));
+                
+                // Tam URL oluştur
+                const currentPath = window.location.pathname;
+                const basePath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+                const fullUrl = window.location.origin + basePath + '/coa-arsiv.html?suppliers=' + data;
+                
+                // Clipboard'a kopyala
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(fullUrl).then(() => {
+                        showAlert(`✅ Link kopyalandı! (${supplierNames.length} tedarikçi)\n\nWhatsApp'tan kendinize gönderin ve mobilde açın.`, 'success');
+                    }).catch(() => {
+                        // Fallback: manuel kopyalama için prompt göster
+                        prompt('Linki kopyalayın (Ctrl+C):', fullUrl);
+                    });
+                } else {
+                    // Eski tarayıcılar için fallback
+                    prompt('Linki kopyalayın (Ctrl+C):', fullUrl);
+                }
+                
+                console.log('📱 Mobil link oluşturuldu:', supplierNames.length, 'tedarikçi');
+            } catch (e) {
+                console.error('❌ Link oluşturma hatası:', e);
+                showAlert('❌ Link oluşturulamadı: ' + e.message, 'error');
+            }
+        }
+        
+        // Tedarikçi listesini Google Sheets'e kaydet (tüm cihazlarda senkron)
+        async function saveSupplierListToSheets() {
+            try {
+                const supplierNames = allResults
+                    .map(r => r.name)
+                    .filter(n => n && !n.startsWith('[Tedarikçi Adı Yok'))
+                    .sort();
+                
+                if (supplierNames.length === 0) {
+                    console.log('Kaydedilecek tedarikçi yok');
+                    return;
+                }
+                
+                console.log('📤 Tedarikçi listesi Google Sheets\'e kaydediliyor...', supplierNames.length, 'tedarikçi');
+                
+                // JSONP ile gönder
+                const url = `https://script.google.com/macros/s/AKfycbxKHsJ9pOyn2lq1KdmOgMlnOxyM0ga5ms8SrYcScGT70xCVNYxf8PWdId1jlrR8UqhvAw/exec?action=saveSupplierList&data=${encodeURIComponent(JSON.stringify(supplierNames))}`;
+                
+                const result = await jsonp(url);
+                
+                if (result && result.success) {
+                    console.log('✅ Tedarikçi listesi Sheets\'e kaydedildi:', supplierNames.length, 'tedarikçi');
+                    showAlert('✅ Tedarikçi listesi tüm cihazlar için kaydedildi!', 'success');
+                } else {
+                    console.error('❌ Sheets kaydetme hatası:', result?.error);
+                    showAlert('⚠️ Tedarikçi listesi kaydedilemedi: ' + (result?.error || 'Bilinmeyen hata'), 'warning');
+                }
+            } catch (e) {
+                console.error('❌ saveSupplierListToSheets hatası:', e);
+                showAlert('❌ Bağlantı hatası: ' + e.message, 'error');
+            }
+        }
+        
+        // JSONP helper function (eğer yoksa)
+        function jsonp(url) {
+            return new Promise((resolve, reject) => {
+                const callbackName = 'jsonp_callback_' + Math.round(100000 * Math.random());
+                window[callbackName] = function(data) {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    resolve(data);
+                };
+                
+                const script = document.createElement('script');
+                script.src = url + (url.indexOf('?') >= 0 ? '&' : '?') + 'callback=' + callbackName;
+                script.onerror = () => {
+                    delete window[callbackName];
+                    document.body.removeChild(script);
+                    reject(new Error('JSONP request failed'));
+                };
+                document.body.appendChild(script);
+            });
         }
         
         // Durum haritasını localStorage'a kaydet
@@ -7676,6 +7822,17 @@
             
             // Tedarikçi isimlerini localStorage'a kaydet (COA sayfası için)
             saveSupplierListForCOA();
+            
+            // Checkbox seçili ise JSON dosyasını otomatik indir ve butonu göster
+            const saveSuppliersCheckbox = document.getElementById('saveSuppliersCheckbox');
+            const downloadBtn = document.getElementById('downloadSupplierBtn');
+            
+            if (saveSuppliersCheckbox && saveSuppliersCheckbox.checked) {
+                // Otomatik indir
+                downloadSupplierListJSON();
+                // İndirme butonunu göster (manuel indirme için)
+                if (downloadBtn) downloadBtn.style.display = 'inline-block';
+            }
             
             // Kaydedilmiş filtreleri yükle
             loadSavedFilters();

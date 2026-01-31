@@ -784,7 +784,13 @@
                     <label>Tedarikçi Firma * <span id="supplierCount" style="color:#2196F3; font-weight:normal; font-size:0.9em;"></span></label>
                     <input type="text" id="supplierInput" list="supplierList" placeholder="Tedarikçi adı yazın veya seçin...">
                     <datalist id="supplierList"></datalist>
-                    <small style="color:#666; font-size:0.85em;">Ana sayfada Excel yükleyince tedarikçiler otomatik gelir</small>
+                    <div style="display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap;">
+                        <small style="color:#666; font-size:0.85em; flex: 1; min-width: 200px;">Ana sayfada Excel yükleyince tedarikçiler otomatik gelir</small>
+                        <label for="supplierFileInput" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 8px 16px; border-radius: 6px; font-size: 0.85em; cursor: pointer; white-space: nowrap; font-weight: 600; display: flex; align-items: center; gap: 6px; transition: all 0.3s;" onmouseover="this.style.transform='scale(1.05)'" onmouseout="this.style.transform='scale(1)'">
+                            📂 JSON Yükle
+                        </label>
+                        <input type="file" id="supplierFileInput" accept=".json" onchange="loadSupplierJSON(event)" style="display: none;">
+                    </div>
                 </div>
                 
                 <div class="form-group">
@@ -927,8 +933,40 @@
         let editingId = null;
         let selectedItems = new Set();
         
+        // URL parametresinden tedarikçileri otomatik yükle (Mobil link için)
+        function loadSuppliersFromURL() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const suppliersData = urlParams.get('suppliers');
+            
+            if (suppliersData) {
+                try {
+                    // Base64 decode ve parse et
+                    const suppliers = JSON.parse(decodeURIComponent(atob(suppliersData)));
+                    
+                    if (Array.isArray(suppliers) && suppliers.length > 0) {
+                        // localStorage'a kaydet
+                        localStorage.setItem('supplierListForCOA', JSON.stringify(suppliers));
+                        
+                        // Başarı mesajı göster
+                        showToast('✅ ' + suppliers.length + ' tedarikçi mobilde yüklendi!', 'success');
+                        
+                        // URL'i temizle (parametreyi kaldır)
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                        
+                        console.log('📱 Mobil linkten tedarikçi yüklendi:', suppliers.length);
+                    }
+                } catch (error) {
+                    console.error('URL\'den tedarikçi yükleme hatası:', error);
+                    showToast('⚠️ Tedarikçi verisi okunamadı', 'warning');
+                }
+            }
+        }
+        
         // ==================== Initialization ====================
         document.addEventListener('DOMContentLoaded', function() {
+            // Önce URL'den tedarikçileri yükle (mobil link varsa)
+            loadSuppliersFromURL();
+            
             // Set default date to today
             document.getElementById('deliveryDate').value = new Date().toISOString().split('T')[0];
             
@@ -1732,6 +1770,12 @@
                 }
             }
             
+            // Öncelik 4: Default tedarikçi listesi (Excel yüklenmediyse)
+            if (supplierNames.length === 0) {
+                supplierNames = getDefaultSuppliers();
+                console.log('Default tedarikçi listesi yüklendi:', supplierNames.length);
+            }
+            
             // Mevcut COA verilerinden de ekle
             coaData.forEach(c => {
                 if (c.supplier && !supplierNames.includes(c.supplier)) {
@@ -1745,6 +1789,55 @@
             if (suppliers.length === 0) {
                 console.warn('Tedarikçi listesi boş! Önce Ana Sayfada Excel yükleyin.');
             }
+        }
+        
+        // JSON dosyasından tedarikçi listesi yükle
+        function loadSupplierJSON(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            showToast('📂 JSON dosyası okunuyor...', 'info');
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const jsonData = JSON.parse(e.target.result);
+                    
+                    // Validasyon
+                    if (!jsonData.suppliers || !Array.isArray(jsonData.suppliers)) {
+                        showToast('❌ Geçersiz JSON formatı!', 'error');
+                        return;
+                    }
+                    
+                    // Tedarikçi listesini güncelle
+                    const supplierNames = jsonData.suppliers.filter(n => n && n.trim());
+                    
+                    if (supplierNames.length === 0) {
+                        showToast('⚠️ JSON dosyasında tedarikçi bulunamadı!', 'warning');
+                        return;
+                    }
+                    
+                    // localStorage'a kaydet
+                    localStorage.setItem('supplierListForCOA', JSON.stringify(supplierNames));
+                    
+                    // Listeyi yenile
+                    suppliers = supplierNames.sort();
+                    updateSupplierDropdowns();
+                    
+                    showToast(`✅ ${supplierNames.length} tedarikçi yüklendi!`, 'success');
+                    console.log('✅ JSON\'dan yüklendi:', supplierNames.length, 'tedarikçi');
+                    console.log('İlk 5:', supplierNames.slice(0, 5));
+                    
+                } catch (error) {
+                    console.error('JSON okuma hatası:', error);
+                    showToast('❌ JSON okuma hatası: ' + error.message, 'error');
+                }
+            };
+            
+            reader.readAsText(file);
+            
+            // Input'u temizle (aynı dosyayı tekrar yükleyebilmek için)
+            event.target.value = '';
         }
         
         function updateSupplierDropdowns() {
