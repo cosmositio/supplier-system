@@ -1627,22 +1627,22 @@
                     showToast('☁️ Google Drive\'a yükleniyor...', 'info');
                     
                     try {
-                        // PDF ve çok sayfalı için HAFİF SIKIŞTIIRMA (görüntü kalitesi bozulmadan)
+                        // ORJİNAL DOSYAYI DRIVE'A YÜKLE (SIKIŞTIRILMAMIŞ)
+                        // PDF ve çok sayfalı için sıkıştırma YOK
                         const isPDF = record.fileType && record.fileType.includes('pdf');
                         const isLargeFile = record.fileData.length > 3000000; // 3MB+
                         const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
                         
                         let uploadData;
                         if (isPDF || isLargeFile) {
-                            // PDF için hafif sıkıştırma - 1.2MB hedef (çok yüksek kalite)
-                            const targetSize = 1200; // 1.2MB
-                            uploadData = await compressForSheets(record.fileData, targetSize);
-                            console.log('📄 PDF/Çok sayfalı - Hafif sıkıştırma (yüksek kalite):', Math.round(uploadData.length / 1024), 'KB');
+                            // ORJİNAL dosyayı yükle, sıkıştırma YOK
+                            uploadData = record.fileData;
+                            console.log('📄 PDF/Çok sayfalı - ORJİNAL dosya yükleniyor (sıkıştırmasız):', Math.round(uploadData.length / 1024), 'KB');
                         } else {
-                            // Tek sayfa için orta sıkıştırma
+                            // Tek sayfa için hafif sıkıştırma
                             const targetSize = isMobile ? 350 : 400;
                             uploadData = await compressForSheets(record.fileData, targetSize);
-                            console.log('📷 Tek sayfa - Orta sıkıştırma:', Math.round(uploadData.length / 1024), 'KB');
+                            console.log('📷 Tek sayfa - Hafif sıkıştırma:', Math.round(uploadData.length / 1024), 'KB');
                         }
                         
                         const compressedData = uploadData;
@@ -2088,18 +2088,17 @@
         // Sheets için özel sıkıştırma - PDF ve çok sayfalılar için yüksek kalite
         async function compressForSheets(dataUrl, maxSizeKB = 250) {
             return new Promise((resolve, reject) => {
-                // PDF ise orjinal haliyle döndür (zaten handleFile'da base64 image olarak dönüştürülmüş)
-                // Eğer hala PDF formatındaysa, sıkıştır
+                // PDF ise thumbnail olarak dönüştür
                 if (dataUrl.includes('application/pdf')) {
-                    console.log('PDF algılandı - orjinal base64 döndürülüyor (zaten image\'e dönüştürülmüş olmalı)');
-                    resolve(dataUrl); // PDF zaten image base64 olarak geliyorsa direkt döndür
+                    console.warn('PDF dosyası - sadece meta bilgisi kaydedilecek');
+                    resolve('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIj48cmVjdCB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgZmlsbD0iI2YwZjBmMCIvPjx0ZXh0IHg9IjUwIiB5PSI1MCIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZHk9Ii4zZW0iIGZvbnQtc2l6ZT0iMjQiPvCfk4Q8L3RleHQ+PC9zdmc+');
                     return;
                 }
                 
                 const img = new Image();
                 img.onerror = () => {
                     console.error('Resim yüklenemedi');
-                    resolve(dataUrl); // Hata durumunda orjinali döndür
+                    resolve('');
                 };
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
@@ -3146,68 +3145,15 @@
             const fileSizeKB = Math.round(file.size / 1024);
             showToast('📁 Dosya: ' + file.name + ' (' + fileSizeKB + 'KB)', 'info');
             
-            // PDF - Tüm sayfaları yüksek kalitede birleştir
+            // PDF - ORJİNAL olarak sakla, resme dönüştürme
             if (file.type === 'application/pdf') {
-                showToast('🔄 PDF işleniyor (tüm sayfalar birleştiriliyor)...', 'info');
-                
-                try {
-                    // PDF'i yüksek kaliteli image'lere dönüştür
-                    const pdfData = await file.arrayBuffer();
-                    const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
-                    
-                    const scale = 2.0; // Yüksek çözünürlük
-                    const numPages = Math.min(pdf.numPages, 30); // Max 30 sayfa
-                    
-                    // İlk sayfa boyutunu al
-                    const firstPage = await pdf.getPage(1);
-                    const firstViewport = firstPage.getViewport({ scale });
-                    const pageWidth = firstViewport.width;
-                    const pageHeight = firstViewport.height;
-                    
-                    // Tüm sayfalar için tek büyük canvas oluştur
-                    const finalCanvas = document.createElement('canvas');
-                    finalCanvas.width = pageWidth;
-                    finalCanvas.height = pageHeight * numPages;
-                    const finalCtx = finalCanvas.getContext('2d');
-                    
-                    // Her sayfayı ayrı canvas'te render edip final canvas'e kopyala
-                    const tempCanvas = document.createElement('canvas');
-                    const tempCtx = tempCanvas.getContext('2d');
-                    
-                    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-                        const page = await pdf.getPage(pageNum);
-                        const viewport = page.getViewport({ scale });
-                        
-                        tempCanvas.width = viewport.width;
-                        tempCanvas.height = viewport.height;
-                        
-                        await page.render({ canvasContext: tempCtx, viewport }).promise;
-                        
-                        // Bu sayfayı final canvas'e yerleştir
-                        finalCtx.drawImage(tempCanvas, 0, (pageNum - 1) * pageHeight);
-                        
-                        showToast(`📄 Sayfa ${pageNum}/${numPages} işleniyor...`, 'info', 1000);
-                    }
-                    
-                    // Tek uzun image olarak kaydet (yüksek kalite)
-                    selectedFileData = finalCanvas.toDataURL('image/jpeg', 0.92);
-                    selectedFile = new File([file], file.name.replace('.pdf', '.jpg'), { type: 'image/jpeg' });
-                    
-                    const newSizeKB = Math.round(selectedFileData.length / 1024);
-                    preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' → ' + newSizeKB + ' KB (' + numPages + ' sayfa birleştirildi)</div>' +
-                        '<img src="' + selectedFileData + '" class="preview-image" style="max-height:300px;">';
-                    showToast('✅ PDF birleştirildi: ' + fileSizeKB + 'KB → ' + newSizeKB + 'KB (' + numPages + ' sayfa)', 'success');
-                } catch (error) {
-                    console.error('PDF işleme hatası:', error);
-                    // Hata durumunda orjinal PDF'i kullan
-                    const reader = new FileReader();
-                    reader.onload = (e) => {
-                        selectedFileData = e.target.result;
-                        preview.innerHTML = '<div class="file-name" style="color:orange;">📄 ' + file.name + ' (işlenemedi)</div>';
-                        showToast('⚠️ PDF işlenemedi, orjinal kullanılıyor', 'warning');
-                    };
-                    reader.readAsDataURL(file);
-                }
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    selectedFileData = e.target.result;
+                    preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' (PDF - orjinal kalite)</div>';
+                    showToast('✅ PDF hazır (orjinal kalite)', 'success');
+                };
+                reader.readAsDataURL(file);
             }
             // Resim sıkıştırma (400KB üstü)
             else if (file.type.startsWith('image/') && file.size > 400 * 1024) {
