@@ -3146,59 +3146,65 @@
             const fileSizeKB = Math.round(file.size / 1024);
             showToast('📁 Dosya: ' + file.name + ' (' + fileSizeKB + 'KB)', 'info');
             
-            // PDF - Yüksek kalitede sıkıştır
+            // PDF - Tüm sayfaları yüksek kalitede birleştir
             if (file.type === 'application/pdf') {
-                showToast('🔄 PDF sıkıştırılıyor (yüksek kalite)...', 'info');
+                showToast('🔄 PDF işleniyor (tüm sayfalar birleştiriliyor)...', 'info');
                 
                 try {
                     // PDF'i yüksek kaliteli image'lere dönüştür
                     const pdfData = await file.arrayBuffer();
                     const pdf = await pdfjsLib.getDocument({ data: pdfData }).promise;
                     
-                    const canvas = document.createElement('canvas');
-                    const ctx = canvas.getContext('2d');
                     const scale = 2.0; // Yüksek çözünürlük
+                    const numPages = Math.min(pdf.numPages, 30); // Max 30 sayfa
                     
-                    // Tüm sayfaları işle
-                    const images = [];
-                    const numPages = Math.min(pdf.numPages, 20); // Max 20 sayfa
+                    // İlk sayfa boyutunu al
+                    const firstPage = await pdf.getPage(1);
+                    const firstViewport = firstPage.getViewport({ scale });
+                    const pageWidth = firstViewport.width;
+                    const pageHeight = firstViewport.height;
+                    
+                    // Tüm sayfalar için tek büyük canvas oluştur
+                    const finalCanvas = document.createElement('canvas');
+                    finalCanvas.width = pageWidth;
+                    finalCanvas.height = pageHeight * numPages;
+                    const finalCtx = finalCanvas.getContext('2d');
+                    
+                    // Her sayfayı ayrı canvas'te render edip final canvas'e kopyala
+                    const tempCanvas = document.createElement('canvas');
+                    const tempCtx = tempCanvas.getContext('2d');
                     
                     for (let pageNum = 1; pageNum <= numPages; pageNum++) {
                         const page = await pdf.getPage(pageNum);
                         const viewport = page.getViewport({ scale });
                         
-                        canvas.width = viewport.width;
-                        canvas.height = viewport.height;
+                        tempCanvas.width = viewport.width;
+                        tempCanvas.height = viewport.height;
                         
-                        await page.render({ canvasContext: ctx, viewport }).promise;
+                        await page.render({ canvasContext: tempCtx, viewport }).promise;
                         
-                        // Yüksek kaliteli JPEG
-                        const imageData = canvas.toDataURL('image/jpeg', 0.92);
-                        images.push(imageData);
+                        // Bu sayfayı final canvas'e yerleştir
+                        finalCtx.drawImage(tempCanvas, 0, (pageNum - 1) * pageHeight);
+                        
+                        showToast(`📄 Sayfa ${pageNum}/${numPages} işleniyor...`, 'info', 1000);
                     }
                     
-                    // Tek sayfalıysa direkt image, çok sayfalıysa ilk sayfayı göster
-                    if (images.length === 1) {
-                        selectedFileData = images[0];
-                        selectedFile = new File([file], file.name.replace('.pdf', '.jpg'), { type: 'image/jpeg' });
-                    } else {
-                        // Çok sayfalı - tüm sayfaları birleştir (veya sadece ilkini kullan)
-                        selectedFileData = images[0]; // İlk sayfa
-                        selectedFile = new File([file], file.name.replace('.pdf', '_page1.jpg'), { type: 'image/jpeg' });
-                    }
+                    // Tek uzun image olarak kaydet (yüksek kalite)
+                    selectedFileData = finalCanvas.toDataURL('image/jpeg', 0.92);
+                    selectedFile = new File([file], file.name.replace('.pdf', '.jpg'), { type: 'image/jpeg' });
                     
                     const newSizeKB = Math.round(selectedFileData.length / 1024);
-                    preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' → ' + newSizeKB + ' KB (' + numPages + ' sayfa)</div>' +
+                    preview.innerHTML = '<div class="file-name" style="color:green;">📄 ' + file.name + ' → ' + newSizeKB + ' KB (' + numPages + ' sayfa birleştirildi)</div>' +
                         '<img src="' + selectedFileData + '" class="preview-image" style="max-height:300px;">';
-                    showToast('✅ PDF sıkıştırıldı: ' + fileSizeKB + 'KB → ' + newSizeKB + 'KB', 'success');
+                    showToast('✅ PDF birleştirildi: ' + fileSizeKB + 'KB → ' + newSizeKB + 'KB (' + numPages + ' sayfa)', 'success');
                 } catch (error) {
-                    console.error('PDF sıkıştırma hatası:', error);
+                    console.error('PDF işleme hatası:', error);
                     // Hata durumunda orjinal PDF'i kullan
                     const reader = new FileReader();
                     reader.onload = (e) => {
                         selectedFileData = e.target.result;
-                        preview.innerHTML = '<div class="file-name" style="color:orange;">📄 ' + file.name + ' (sıkıştırılamadı)</div>';
-                        showToast('⚠️ PDF sıkıştırılamadı, orjinal kullanılıyor', 'warning');
+                        preview.innerHTML = '<div class="file-name" style="color:orange;">📄 ' + file.name + ' (işlenemedi)</div>';
+                        showToast('⚠️ PDF işlenemedi, orjinal kullanılıyor', 'warning');
                     };
                     reader.readAsDataURL(file);
                 }
