@@ -590,21 +590,24 @@
             border-bottom: 1px solid #eee;
         }
         
-        /* Hammadde Kodu sütunu için özel genişlik */
+        /* Tedarikçi sütunu için kompakt genişlik */
+        th:nth-child(2),
+        td:nth-child(2) {
+            min-width: 140px;
+            max-width: 180px;
+            white-space: normal;
+            word-wrap: break-word;
+        }
+        
+        /* Hammadde Kodu sütunu için GENİŞ alan */
         th:nth-child(3),
         td:nth-child(3) {
-            min-width: 250px;
-            max-width: 400px;
+            min-width: 350px;
+            max-width: 550px;
             white-space: normal;
             word-wrap: break-word;
             overflow-wrap: break-word;
-        }
-        
-        /* Tedarikçi sütunu için genişlik */
-        th:nth-child(2),
-        td:nth-child(2) {
-            min-width: 180px;
-            max-width: 250px;
+            font-weight: 500;
         }
         
         /* Tarih ve lot sütunları */
