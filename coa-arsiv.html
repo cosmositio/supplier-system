@@ -1629,18 +1629,24 @@
                     try {
                         // ORJİNAL DOSYAYI DRIVE'A YÜKLE (SIKIŞTIRILMAMIŞ)
                         // PDF, Excel, Word ve çok sayfalı için sıkıştırma YOK
-                        const isPDF = record.fileType && record.fileType.includes('pdf');
-                        const isExcel = record.fileType && (record.fileType.includes('spreadsheet') || record.fileName.endsWith('.xlsx') || record.fileName.endsWith('.xls'));
-                        const isWord = record.fileType && (record.fileType.includes('wordprocessing') || record.fileName.endsWith('.docx') || record.fileName.endsWith('.doc'));
+                        const fileName = record.fileName || '';
+                        const fileType = record.fileType || '';
+                        
+                        const isPDF = fileType.includes('pdf') || fileName.toLowerCase().endsWith('.pdf');
+                        const isExcel = fileType.includes('spreadsheet') || fileName.toLowerCase().endsWith('.xlsx') || fileName.toLowerCase().endsWith('.xls');
+                        const isWord = fileType.includes('wordprocessing') || fileName.toLowerCase().endsWith('.docx') || fileName.toLowerCase().endsWith('.doc');
+                        const isOfficeDoc = isPDF || isExcel || isWord;
                         const isLargeFile = record.fileData.length > 3000000; // 3MB+
                         const isMobile = /Mobile|Android|iPhone/i.test(navigator.userAgent);
                         
+                        console.log('📄 Dosya tipi kontrolü:', { fileName, fileType, isPDF, isExcel, isWord, isOfficeDoc });
+                        
                         let uploadData;
-                        if (isPDF || isExcel || isWord || isLargeFile) {
-                            // ORJİNAL dosyayı yükle, sıkıştırma YOK
+                        if (isOfficeDoc || isLargeFile) {
+                            // ORJİNAL dosyayı yükle, sıkıştırma YOK - DOĞRUDAN KULLAN
                             uploadData = record.fileData;
-                            let fileTypeLabel = isPDF ? 'PDF' : (isExcel ? 'Excel' : (isWord ? 'Word' : 'Çok sayfalı'));
-                            console.log('📄 ' + fileTypeLabel + ' - ORJİNAL dosya yükleniyor (sıkıştırmasız):', Math.round(uploadData.length / 1024), 'KB');
+                            let fileTypeLabel = isPDF ? 'PDF' : (isExcel ? 'Excel' : (isWord ? 'Word' : 'Büyük dosya'));
+                            console.log('✅ ' + fileTypeLabel + ' - ORJİNAL dosya yükleniyor (sıkıştırmasız):', Math.round(uploadData.length / 1024), 'KB');
                         } else {
                             // Sadece küçük resimler için hafif sıkıştırma
                             const targetSize = isMobile ? 350 : 400;
